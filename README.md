@@ -34,6 +34,7 @@ Markiert Salesforce Case-Listen farblich anhand frei definierbarer Regeln und br
 - [Edge](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
 2. Entwicklermodus einschalten.
 - <edge://extensions/>
+- Klicken Sie hier, um [meine Erweiterungen anzuzeigen](edge://extensions/) [1].
 - Linke Seite Entwicklermodus einschalten
 - <chrome://extensions/>
 - Oben Rechts Entwicklermodus einschalten
