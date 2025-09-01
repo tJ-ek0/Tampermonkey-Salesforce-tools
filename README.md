@@ -9,7 +9,7 @@ Markiert Salesforce Case-Listen farblich anhand frei definierbarer Regeln und br
 - UI nur auf **Case-Listen** sichtbar
 
 > **Install/Update-URL (Tampermonkey):**  
-> `<a href="https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/refs/heads/main/sfautorefreshhighlights.user.js" target="_blank">https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/refs/heads/main/sfautorefreshhighlights.user.js</a>`
+> [https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/refs/heads/main/sfautorefreshhighlights.user.js](https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/refs/heads/main/sfautorefreshhighlights.user.js)
 
 ---
 
