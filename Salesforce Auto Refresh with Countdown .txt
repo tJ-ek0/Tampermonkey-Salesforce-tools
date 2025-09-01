@@ -1,0 +1,170 @@
+// ==UserScript==
+// @name         Salesforce Auto Refresh with Countdown
+// @namespace    http://tampermonkey.net/
+// @version      0.7
+// @description  Auto refresh with countdown; waits for button, no duplicate timers, robust against DOM re-renders
+// @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
+// @match        https://endress.lightning.force.com/lightning/o/Case/*
+// @grant        none
+// ==/UserScript==
+
+(function () {
+  'use strict';
+
+  // ===== Einstellungen =====
+  const INTERVAL_SECONDS = 60; // Refresh-Intervall
+  const REFRESH_XPATH = "//*[@id='brandBand_1']/div/div/div/div/lst-object-home/div/lst-list-view-manager/lst-common-list-internal/lst-list-view-manager-header/div/div[2]/div[4]/lst-list-view-manager-button-bar/div/div[1]/lightning-button-icon/button";
+
+  // ===== Zustände / Timer-IDs =====
+  let countdownIntervalId = null;
+  let refreshIntervalId = null;
+  let observer = null;
+  let pollId = null;
+  let nextRefreshAt = null;
+
+  // ===== Helfer =====
+  function getRefreshButton() {
+    return document
+      .evaluate(REFRESH_XPATH, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null)
+      .singleNodeValue;
+  }
+
+  function clearCountdown() {
+    if (countdownIntervalId) {
+      clearInterval(countdownIntervalId);
+      countdownIntervalId = null;
+    }
+  }
+
+  function clearMainInterval() {
+    if (refreshIntervalId) {
+      clearInterval(refreshIntervalId);
+      refreshIntervalId = null;
+    }
+  }
+
+  function setButtonLabel(btn, secs) {
+    if (!btn) return;
+    // Anzeige im Button + Tooltip
+    btn.innerText = String(secs);
+    btn.title = `Automatischer Refresh in ${secs} Sek.`;
+  }
+
+  function startCountdown() {
+    const btn = getRefreshButton();
+    if (!btn) return;
+
+    clearCountdown();
+    nextRefreshAt = Date.now() + INTERVAL_SECONDS * 1000;
+
+    // initiale Anzeige sofort setzen
+    setButtonLabel(btn, INTERVAL_SECONDS);
+
+    countdownIntervalId = setInterval(() => {
+      const remainingMs = Math.max(0, nextRefreshAt - Date.now());
+      const secs = Math.ceil(remainingMs / 1000);
+      const buttonNow = getRefreshButton(); // Button kann neu gerendert werden
+      if (buttonNow) setButtonLabel(buttonNow, secs);
+
+      if (remainingMs <= 0) {
+        clearCountdown();
+      }
+    }, 1000);
+  }
+
+  function clickRefreshButton() {
+    const btn = getRefreshButton();
+    if (btn) {
+      btn.click();
+      console.log('[SF-AR] Refresh button clicked');
+    } else {
+      console.warn('[SF-AR] Refresh button not found at click time');
+    }
+  }
+
+  function startMainLoop() {
+    // Doppelte Loops verhindern
+    clearMainInterval();
+    clearCountdown();
+
+    startCountdown();
+
+    refreshIntervalId = setInterval(() => {
+      const btn = getRefreshButton();
+      if (!btn) {
+        console.warn('[SF-AR] Button verschwunden – warte erneut...');
+        waitForButtonThen(startMainLoop); // wenn weggerendert, erneut warten & neu starten
+        clearMainInterval();
+        clearCountdown();
+        return;
+      }
+      clickRefreshButton();
+      startCountdown(); // Countdown neu starten
+    }, INTERVAL_SECONDS * 1000);
+  }
+
+  function waitForButtonThen(onFound) {
+    // Bereits vorhanden?
+    const immediate = getRefreshButton();
+    if (immediate) {
+      onFound?.();
+      return;
+    }
+
+    // Sauber machen, falls schon ein Observer/Poll läuft
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
+    if (pollId) {
+      clearInterval(pollId);
+      pollId = null;
+    }
+
+    // MutationObserver: reagiert auf DOM-Änderungen
+    observer = new MutationObserver(() => {
+      if (getRefreshButton()) {
+        observer.disconnect();
+        observer = null;
+        if (pollId) {
+          clearInterval(pollId);
+          pollId = null;
+        }
+        onFound?.();
+      }
+    });
+    // Großzügig den gesamten Body beobachten (Salesforce ist SPA)
+    observer.observe(document.documentElement || document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    // Fallback: Polling alle 1000 ms
+    pollId = setInterval(() => {
+      if (getRefreshButton()) {
+        if (observer) {
+          observer.disconnect();
+          observer = null;
+        }
+        clearInterval(pollId);
+        pollId = null;
+        onFound?.();
+      }
+    }, 1000);
+  }
+
+  // ===== Start-Trigger =====
+  // Start NICHT sofort – erst wenn Seite "load" hatte UND der Button existiert.
+  window.addEventListener('load', () => {
+    // Kleine Startverzögerung, damit LWC-Komponenten Zeit haben
+    setTimeout(() => {
+      waitForButtonThen(startMainLoop);
+    }, 800);
+  });
+
+  // Extra: Wenn die Seite via SPA navigiert (Lightning), zusätzlich auf "popstate" reagieren
+  window.addEventListener('popstate', () => {
+    console.log('[SF-AR] popstate – überprüfe erneut auf Button');
+    waitForButtonThen(startMainLoop);
+  });
+})();

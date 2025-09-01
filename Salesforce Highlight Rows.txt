@@ -1,0 +1,436 @@
+// ==UserScript==
+// @name         Salesforce Highlight Rows
+// @namespace    http://tampermonkey.net/
+// @version      3.3.1
+// @description  Zeilen farblich markieren; UI mit Add-Zeile TEXT|FARBE|PRIO|✓ + Enter-Speichern; Button nur auf Case-List; „Als Standard setzen“; Farbe mit ✓ bestätigen & sofort anwenden.
+// @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
+// @match        https://endress.lightning.force.com/lightning/o/Case/*
+// @grant        none
+// @run-at       document-end
+// ==/UserScript==
+
+(function () {
+  'use strict';
+
+  // ===== Storage / Defaults =====
+  const LS_KEY = 'sfhl_config_v3';           // aktuelle Konfiguration
+  const LS_DEFAULT_KEY = 'sfhl_default_v3';  // Nutzer-Standard
+
+  const BASE_DEFAULT = [
+    { id: id(), term: 'Tobias Jurgan',    color: '#ccffcc', priority: 30 },
+    { id: id(), term: 'Torsten Hommen',   color: '#ffffcc', priority: 20 },
+    { id: id(), term: 'Complaint - Prio', color: '#ffcccc', priority: 10 }
+  ];
+
+  function id(){ return 'k' + Math.random().toString(36).slice(2,10); }
+
+  function getDefaultConfig() {
+    try {
+      const raw = localStorage.getItem(LS_DEFAULT_KEY);
+      if (!raw) return BASE_DEFAULT.slice();
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw 0;
+      return parsed.map(e => ({
+        id: e.id || id(),
+        term: typeof e.term === 'string' ? e.term : '',
+        color: e.color || '#ffffcc',
+        priority: typeof e.priority === 'number' ? e.priority : 0
+      }));
+    } catch { return BASE_DEFAULT.slice(); }
+  }
+
+  function loadConfig(){
+    try{
+      const r = localStorage.getItem(LS_KEY);
+      if(!r) return getDefaultConfig();
+      const p = JSON.parse(r);
+      if(!Array.isArray(p)) throw 0;
+      return p.map(e => ({
+        id: e.id || id(),
+        term: typeof e.term === 'string' ? e.term : '',
+        color: e.color || '#ffffcc',
+        priority: typeof e.priority === 'number' ? e.priority : 0
+      }));
+    } catch { return getDefaultConfig(); }
+  }
+
+  function saveConfig(c){ localStorage.setItem(LS_KEY, JSON.stringify(c)); }
+  function saveDefault(c){ localStorage.setItem(LS_DEFAULT_KEY, JSON.stringify(c)); }
+
+  let CONFIG = loadConfig();
+
+  // ===== Styles =====
+  injectStyle(`
+    /* Markierung */
+    .tm-sfhl-mark,
+    .tm-sfhl-mark > td,
+    .tm-sfhl-mark [role="gridcell"],
+    .tm-sfhl-mark .slds-hint-parent,
+    .tm-sfhl-mark .slds-cell-wrap { background-color: var(--sfhl-bg) !important; }
+
+    /* Button */
+    .tm-sfhl-btn {
+      position: fixed; right: 18px; bottom: 18px; z-index: 2147483647;
+      padding: 11px 14px; border-radius: 12px; background: #1f2937;
+      color: #fff; font: 600 13px/1 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      box-shadow: 0 8px 24px rgba(0,0,0,.25); cursor: pointer; border: none; display: none;
+    }
+    .tm-sfhl-btn:hover { filter: brightness(1.05); }
+
+    /* Panel */
+    .tm-sfhl-panel {
+      position: fixed; right: 18px; bottom: 74px; width: 420px; max-height: 82vh;
+      background: #ffffff; color: #111; border-radius: 14px; border: 1px solid #e5e7eb;
+      box-shadow: 0 24px 60px rgba(0,0,0,.28); z-index: 2147483647; display: none; overflow: hidden;
+      font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    }
+    .tm-sfhl-panel.open { display: block; }
+    .tm-sfhl-hdr {
+      padding: 12px 14px; background: #111827; color: #fff; display: flex; align-items:center; justify-content: space-between;
+    }
+
+    /* Scrollcontainer */
+    .tm-sfhl-scroll {
+      display: flex; flex-direction: column;
+      max-height: calc(82vh - 48px);
+      overflow: auto;
+    }
+    .tm-sfhl-content { padding: 10px 14px 8px; }
+    .tm-sfhl-gridhead { display: grid; grid-template-columns: 1fr 128px 84px 28px 28px; gap: 6px; font-weight: 600; margin: 8px 0; opacity:.7; }
+    .tm-sfhl-list .tm-sfhl-row {
+      display: grid; grid-template-columns: 1fr 128px 84px 28px 28px;
+      gap: 6px; align-items:center; margin-bottom: 6px;
+    }
+    .tm-sfhl-row input[type="text"] { width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; }
+    .tm-sfhl-row input[type="number"] { width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; }
+    .tm-sfhl-actions button { width: 100%; height: 34px; border: 1px solid #d1d5db; border-radius: 8px; background: #f9fafb; cursor: pointer; }
+    .tm-sfhl-actions button:hover { background: #f3f4f6; }
+
+    /* Farb-Cell mit Übernehmen-Button */
+    .tm-sfhl-colorwrap {
+      display: grid; grid-template-columns: 1fr 34px; gap: 4px; align-items: center;
+    }
+    .tm-sfhl-colorwrap input[type="color"] { width: 100%; height: 34px; border: 1px solid #d1d5db; border-radius: 8px; padding: 0; }
+    .tm-sfhl-apply {
+      height: 34px; border-radius: 8px; border: 1px solid #2563eb; background:#2563eb; color:#fff;
+      cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:16px; line-height:1;
+    }
+    .tm-sfhl-apply.pending { background:#1d4ed8; } /* visuelles Signal, dass Farbe geändert wurde */
+
+    /* Add-Zeile TEXT | FARBE | PRIO | ✓ */
+    .tm-sfhl-addwrap {
+      position: sticky; bottom: 0; background: #fff; padding: 10px 14px 12px;
+      border-top: 1px solid #e5e7eb; box-shadow: 0 -6px 16px rgba(0,0,0,.06);
+    }
+    .tm-sfhl-add {
+      display: grid;
+      grid-template-columns: 1fr 50px 84px 44px; /* TEXT | FARBE | PRIO | ✓ */
+      gap: 8px; align-items: center;
+    }
+    .tm-sfhl-add .okbtn {
+      height: 36px; min-width: 36px;
+      border-radius: 10px; border: 1px solid #2563eb; background: #2563eb; color:#fff; cursor:pointer;
+      display: inline-flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1;
+    }
+    .tm-sfhl-add .okbtn:hover { filter: brightness(1.05); }
+    .tm-sfhl-add input[type="number"], .tm-sfhl-add input[type="text"] {
+      padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px;
+    }
+    .tm-sfhl-add input[type="color"] { height: 36px; border: 1px solid #d1d5db; border-radius: 8px; padding: 0; }
+
+    .tm-sfhl-footer { display:flex; gap:8px; margin-top:8px; }
+    .tm-sfhl-footer button { padding: 6px 10px; border-radius: 8px; border: 1px solid #d1d5db; background: #f9fafb; cursor:pointer; }
+    .tm-sfhl-footer button:hover { background:#f3f4f6; }
+    .tm-sfhl-badge { display:inline-block; padding:2px 8px; border-radius:999px; background:#eef2ff; color:#3730a3; font-weight:600; font-size:11px; }
+  `);
+
+  // ===== UI =====
+  const btn = document.createElement('button');
+  btn.className = 'tm-sfhl-btn';
+  btn.textContent = 'Addon Steuerung';
+  document.documentElement.appendChild(btn);
+
+  const panel = document.createElement('div');
+  panel.className = 'tm-sfhl-panel';
+  panel.innerHTML = `
+    <div class="tm-sfhl-hdr">
+      <div>Zeilen-Highlights <span class="tm-sfhl-badge">Prio: höher gewinnt</span></div>
+      <button title="Schließen" style="border:none;background:transparent;color:#fff;cursor:pointer;font-size:18px;line-height:1">✕</button>
+    </div>
+    <div class="tm-sfhl-scroll">
+      <div class="tm-sfhl-content">
+        <div class="tm-sfhl-gridhead">
+          <div>Wort/Stichwort</div><div>Farbe</div><div>Prio</div><div>▲</div><div>✕</div>
+        </div>
+        <div class="tm-sfhl-list"></div>
+        <div class="tm-sfhl-footer">
+          <button class="tm-sfhl-setdefault">Als Standard setzen</button>
+          <button class="tm-sfhl-reset">Auf Standard</button>
+          <button class="tm-sfhl-export">Export</button>
+          <button class="tm-sfhl-import">Import</button>
+        </div>
+      </div>
+      <div class="tm-sfhl-addwrap">
+        <form class="tm-sfhl-add" autocomplete="off">
+          <input type="text" placeholder="Neuer Wert…" title="Wort/Stichwort" class="add-term">
+          <input type="color" value="#e6ffe6" title="Farbe" class="add-color">
+          <input type="number" value="5" step="1" title="Priorität (höher = gewinnt)" class="add-prio">
+          <button type="submit" class="okbtn" title="Hinzufügen" aria-label="Hinzufügen">✓</button>
+        </form>
+      </div>
+    </div>
+  `;
+  document.documentElement.appendChild(panel);
+
+  btn.onclick = () => panel.classList.toggle('open');
+  panel.querySelector('.tm-sfhl-hdr button').onclick = () => panel.classList.remove('open');
+
+  const listEl        = panel.querySelector('.tm-sfhl-list');
+  const addForm       = panel.querySelector('.tm-sfhl-add');
+  const addTermEl     = panel.querySelector('.add-term');
+  const addColorEl    = panel.querySelector('.add-color');
+  const addPrioEl     = panel.querySelector('.add-prio');
+  const setDefaultBtn = panel.querySelector('.tm-sfhl-setdefault');
+
+  // Add-Form: Enter = hinzufügen
+  addForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const term = (addTermEl.value || '').trim();
+    if (!term) { addTermEl.focus(); return; }
+    const color = addColorEl.value || '#ffffcc';
+    const priority = parseInt(addPrioEl.value, 10) || 0;
+    CONFIG.push({ id: id(), term, color, priority });
+    saveConfig(CONFIG);
+    renderList();
+    rescanAllSoon(true);
+    addTermEl.value = '';
+    addTermEl.focus();
+  });
+
+  // Als Standard setzen
+  setDefaultBtn.addEventListener('click', () => {
+    const clean = CONFIG.map(e => ({
+      id: e.id || id(),
+      term: String(e.term || ''),
+      color: e.color || '#ffffcc',
+      priority: Number.isFinite(e.priority) ? e.priority : 0
+    }));
+    saveDefault(clean);
+    alert('Aktuelle Einstellung als Standard gespeichert.\n„Auf Standard“ setzt künftig auf diesen Zustand zurück.');
+  });
+
+  // Reset auf Standard
+  panel.querySelector('.tm-sfhl-reset').onclick  = () => {
+    if (!confirm('Auf deinen gespeicherten Standard zurücksetzen?')) return;
+    CONFIG = getDefaultConfig();
+    saveConfig(CONFIG);
+    renderList();
+    rescanAllSoon(true);
+  };
+
+  panel.querySelector('.tm-sfhl-export').onclick = () => {
+    navigator.clipboard.writeText(JSON.stringify(CONFIG, null, 2)).then(()=>alert('Konfiguration kopiert.'));
+  };
+  panel.querySelector('.tm-sfhl-import').onclick = () => {
+    const d = prompt('JSON-Konfiguration einfügen:');
+    if (!d) return;
+    try {
+      const p = JSON.parse(d);
+      if (!Array.isArray(p)) throw 0;
+      CONFIG = p.map(e => ({
+        id: e.id || id(),
+        term: String(e.term || ''),
+        color: e.color || '#ffffcc',
+        priority: Number.isFinite(e.priority) ? e.priority : 0
+      }));
+      saveConfig(CONFIG); renderList(); rescanAllSoon(true);
+    } catch { alert('Ungültiges JSON.'); }
+  };
+
+  // ===== Liste rendern (mit Farb-Übernehmen-Button) =====
+  function renderList() {
+    const sorted = CONFIG.slice().sort((a,b)=>b.priority - a.priority || a.term.localeCompare(b.term));
+    listEl.innerHTML = '';
+    for (const item of sorted) {
+      const row = document.createElement('div');
+      row.className = 'tm-sfhl-row';
+      row.innerHTML = `
+        <input type="text" value="${escapeHtml(item.term)}" data-id="${item.id}" class="term">
+        <div class="tm-sfhl-colorwrap">
+          <input type="color" value="${item.color}" data-id="${item.id}" class="color">
+          <button class="tm-sfhl-apply" title="Farbe übernehmen" data-id="${item.id}">✓</button>
+        </div>
+        <input type="number" value="${item.priority}" step="1" data-id="${item.id}" class="prio">
+        <div class="tm-sfhl-actions"><button class="up" title="Priorität +1">▲</button></div>
+        <div class="tm-sfhl-actions"><button class="del" title="Löschen">✕</button></div>
+      `;
+      listEl.appendChild(row);
+    }
+
+    // Events: Text
+    listEl.querySelectorAll('.term').forEach(inp => inp.onchange = e => {
+      const it = CONFIG.find(x=>x.id === e.target.dataset.id); if (!it) return;
+      it.term = e.target.value; saveConfig(CONFIG); rescanAllSoon(true);
+    });
+
+    // Events: Farbe -> erst Pending markieren; erst bei ✓ übernehmen
+    listEl.querySelectorAll('.color').forEach(inp => {
+      inp.addEventListener('input', (e) => {
+        const btn = e.target.closest('.tm-sfhl-colorwrap').querySelector('.tm-sfhl-apply');
+        btn.classList.add('pending');
+      });
+      // Enter im Farbfeld = übernehmen
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const btn = e.target.closest('.tm-sfhl-colorwrap').querySelector('.tm-sfhl-apply');
+          btn.click();
+        }
+      });
+    });
+
+    // Events: ✓ Farbe übernehmen -> speichern + sofort neu markieren
+    listEl.querySelectorAll('.tm-sfhl-apply').forEach(btn => {
+      btn.onclick = (e) => {
+        const id = e.currentTarget.dataset.id;
+        const input = e.currentTarget.closest('.tm-sfhl-colorwrap').querySelector('.color');
+        const it = CONFIG.find(x=>x.id === id); if (!it) return;
+        it.color = input.value || '#ffffcc';
+        saveConfig(CONFIG);
+        e.currentTarget.classList.remove('pending');
+        // sofort auf Tabelle anwenden
+        highlightRows(true);
+      };
+    });
+
+    // Events: Prio
+    listEl.querySelectorAll('.prio').forEach(inp => inp.onchange = e => {
+      const it = CONFIG.find(x=>x.id === e.target.dataset.id); if (!it) return;
+      it.priority = parseInt(e.target.value,10) || 0; saveConfig(CONFIG); renderList(); rescanAllSoon(true);
+    });
+
+    // Events: ▲ und ✕
+    listEl.querySelectorAll('.up').forEach(btn => btn.onclick = e => {
+      const id = e.target.closest('.tm-sfhl-actions').previousElementSibling.dataset.id;
+      const it = CONFIG.find(x=>x.id === id); if (!it) return;
+      it.priority += 1; saveConfig(CONFIG); renderList(); rescanAllSoon(true);
+    });
+    listEl.querySelectorAll('.del').forEach(btn => btn.onclick = e => {
+      const id = e.target.closest('.tm-sfhl-row').querySelector('.term').dataset.id;
+      CONFIG = CONFIG.filter(x=>x.id !== id); saveConfig(CONFIG); renderList(); rescanAllSoon(true);
+    });
+  }
+  renderList();
+
+  // ===== Markier-Logik =====
+  const ABS_XPATH = '/html/body/div[4]/div[1]/section/div[1]/div/div[2]/div[1]/div/div/div/div/div/div/div/lst-object-home/div/lst-list-view-manager/lst-common-list-internal/div//tr';
+  const FALLBACK_XPATH = '//lst-list-view-manager//div//tr | //lst-list-view-manager//tr';
+
+  function getRowsSnapshot(){
+    try{
+      let s = document.evaluate(ABS_XPATH, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      if (s.snapshotLength > 0) return s;
+      return document.evaluate(FALLBACK_XPATH, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+    } catch { return { snapshotLength: 0, snapshotItem: () => null }; }
+  }
+  function norm(s){ return (s||'').toString().toLowerCase(); }
+  function bestMatchForText(txt){
+    if(!txt) return null;
+    const low = norm(txt);
+    let best = null;
+    for (const e of CONFIG) {
+      if (!e.term) continue;
+      if (low.includes(norm(e.term))) {
+        if (!best || e.priority > best.priority) best = e;
+      }
+    }
+    return best; // { term, color, priority }
+  }
+  function markRow(row, match){
+    const curP = Number(row.dataset.sfhlPriority || '-1');
+    if (curP >= (match.priority||0) && row.classList.contains('tm-sfhl-mark')) return;
+    row.classList.add('tm-sfhl-mark');
+    row.style.setProperty('--sfhl-bg', match.color, 'important');
+    row.dataset.sfhlPriority = String(match.priority||0);
+  }
+  function unmarkRow(row){
+    row.classList.remove('tm-sfhl-mark');
+    row.style.removeProperty('--sfhl-bg');
+    delete row.dataset.sfhlPriority;
+  }
+  function highlightRows(fullRecalc=false){
+    const snap = getRowsSnapshot();
+    if (snap.snapshotLength === 0) return false;
+    for (let i=0; i<snap.snapshotLength; i++) {
+      const row = snap.snapshotItem(i);
+      if (!row) continue;
+      if (fullRecalc) unmarkRow(row);
+      const cells = row.querySelectorAll('td');
+      let text = '';
+      for (const c of cells) text += ' ' + (c.innerText || c.textContent || '');
+      const match = bestMatchForText(text);
+      if (match) markRow(row, match);
+      else if (fullRecalc) unmarkRow(row);
+    }
+    return true;
+  }
+
+  // ===== Sichtbarkeit nur auf Case-List =====
+  function isCaseListPage(){ return location.href.startsWith('https://endress.lightning.force.com/lightning/o/Case/'); }
+  function updateButtonVisibility(){
+    const visible = isCaseListPage();
+    btn.style.display = visible ? 'inline-block' : 'none';
+    if (!visible) panel.classList.remove('open');
+  }
+  updateButtonVisibility();
+
+  const origPush = history.pushState;
+  history.pushState = function(){
+    const r = origPush.apply(this, arguments);
+    setTimeout(() => { updateButtonVisibility(); highlightRows(true); }, 100);
+    return r;
+  };
+  window.addEventListener('popstate', () => setTimeout(() => { updateButtonVisibility(); highlightRows(true); }, 100));
+  setInterval(updateButtonVisibility, 1500);
+
+  // ===== Trigger =====
+  function rescanAllSoon(full=false){
+    clearTimeout(rescanAllSoon._t);
+    rescanAllSoon._t = setTimeout(() => highlightRows(full), 50);
+  }
+  (function earlyKickoff(){
+    let tries = 0;
+    const id = setInterval(() => {
+      if (!isCaseListPage()) { clearInterval(id); return; }
+      if (highlightRows()) clearInterval(id);
+      if (++tries > 120) clearInterval(id);
+    }, 200);
+  })();
+
+  const observer = new MutationObserver(muts => {
+    for (const mu of muts) {
+      if (mu.addedNodes && mu.addedNodes.length) {
+        for (const node of mu.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.matches?.('tr, table') || node.querySelector?.('tr, table')) { rescanAllSoon(); return; }
+        }
+      }
+      if (mu.type === 'characterData') { rescanAllSoon(); return; }
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+  setInterval(() => { if (isCaseListPage()) highlightRows(); }, 5000);
+
+  // ===== utils =====
+  function injectStyle(css){
+    const id = 'tm-sfhl-style-ui';
+    if (document.getElementById(id)) return;
+    const st = document.createElement('style');
+    st.id = id; st.textContent = css;
+    (document.head || document.documentElement).appendChild(st);
+  }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+  }
+})();
