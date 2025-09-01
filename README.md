@@ -92,7 +92,7 @@ Markiert Salesforce Case-Listen farblich anhand frei definierbarer Regeln und br
 
 ## Standard zurücksetzen
 
-- **Auf Standard** setzt die Regeln auf die im Skript-Code hinterlegte Liste zurück (kein separater „gespeicherter Standard“).
+- **Auf Standard** setzt die Regeln auf die im Skript-Code hinterlegte Liste zurück
 
 ---
 
