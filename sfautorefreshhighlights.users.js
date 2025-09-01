@@ -10,8 +10,8 @@
 // @run-at       document-end
 // @homepageURL  https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
 // @supportURL   https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools/issues
-// @downloadURL  https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/SalesForce_AutoRefresh_Highlights.user.js
-// @updateURL    https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/SalesForce_AutoRefresh_Highlights.user.js
+// @downloadURL  https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.users.js
+// @updateURL    https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.users.js
 // ==/UserScript==
 
 (function () {
@@ -660,4 +660,5 @@
     return String(s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
   }
 })();
+
 
