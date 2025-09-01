@@ -44,7 +44,7 @@ Markiert Salesforce Case-Listen farblich anhand frei definierbarer Regeln und br
    [https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/refs/heads/main/sfautorefreshhighlights.user.js](https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/refs/heads/main/sfautorefreshhighlights.user.js)
 5. Tampermonkey fragt -> **Installieren**.
 
-**Automatische Updates:** erfolgen über denselben Link. Bei neuen Versionen einfach die Datei im Repo aktualisieren (Version hochzählen), Tampermonkey zieht das Update.
+**Automatische Updates:** erfolgen über denselben Link. Tampermonkey zieht das Update.
 
 ---
 
