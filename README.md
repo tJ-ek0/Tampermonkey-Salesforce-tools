@@ -33,9 +33,9 @@ Markiert Salesforce Case-Listen farblich anhand frei definierbarer Regeln und br
 - [Chrome](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=de)
 - [Edge](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
 2. Entwicklermodus einschalten.
-- [Edge](edge://extensions/)
+- <edge://extensions/>
 - Linke Seite Entwicklermodus einschalten
-- [Chrome](chrome://extensions/)
+- <chrome://extensions/>
 - Oben Rechts Entwicklermodus einschalten
       
 4. Installationslink öffnen:  
