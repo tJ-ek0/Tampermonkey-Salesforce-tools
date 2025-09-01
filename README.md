@@ -1,63 +1,97 @@
-# 📘 Salesforce Tampermonkey Scripts
+# Salesforce List Markierung + Refresh (Tampermonkey)
 
-## Übersicht
-Diese Sammlung enthält zwei benutzerdefinierte Tampermonkey-Skripte zur Verbesserung der Benutzererfahrung in Salesforce Lightning, speziell auf der **Case-Listenansicht** (`/lightning/o/Case/*`). Beide Skripte wurden von **Tobias Jurgan** entwickelt und sind auf die Umgebung von **Endress+Hauser Deutschland** zugeschnitten.
+Markiert Salesforce Case-Listen farblich anhand frei definierbarer Regeln und bringt ein praktisches Steuerfenster mit:
+- Regeln: **Wort/Stichwort · Farbe · Priorität** (höhere Prio gewinnt)
+- Farbe per **✓** bestätigen (sofort in der Liste sichtbar)
+- **Export/Import** der Regeln als Datei
+- **Auto-Refresh** mit Countdown direkt im Salesforce-Refresh-Button
+- **Ein/Aus-Toggle** und **Intervall** (Standard: 60 s)
+- UI nur auf **Case-Listen** sichtbar
 
----
-
-## 📄 1. Salesforce Auto Refresh with Countdown
-
-### 🔍 Beschreibung
-Dieses Skript führt automatisch einen Seiten-Refresh in der Case-Listenansicht durch – mit einem sichtbaren Countdown direkt im Refresh-Button.
-
-### 🧩 Funktionen
-- Automatischer Refresh alle 60 Sekunden (konfigurierbar).
-- Countdown-Anzeige im Button inkl. Tooltip.
-- Robuste DOM-Erkennung: erkennt, wenn der Button neu gerendert wird.
-- Verhindert doppelte Timer durch sauberes Management.
-- Unterstützt SPA-Navigation (z. B. durch `popstate`-Events in Salesforce Lightning).
-
-### 🔧 Technische Details
-- XPath-basierte Button-Erkennung.
-- Fallback-Mechanismen via `MutationObserver` und Polling.
-- Kein `@grant` notwendig – läuft im Kontext der Seite.
+> **Install/Update-URL (Tampermonkey):**  
+> `https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/Salesforce%20Highlight%20Rows%20%2B%20Refresh.user.js`
 
 ---
 
-## 📄 2. Salesforce Highlight Rows
-
-### 🔍 Beschreibung
-Dieses Skript hebt Zeilen in der Case-Listenansicht farblich hervor – basierend auf benutzerdefinierten Stichwörtern, Farben und Prioritäten. Es bietet eine vollständige UI zur Konfiguration.
-
-### 🧩 Funktionen
-- Zeilenhervorhebung basierend auf Textinhalt (z. B. Namen, Stichwörter).
-- Prioritätssystem: Höhere Priorität überschreibt niedrigere.
-- UI-Panel mit:
-  - Hinzufügen neuer Regeln (Text, Farbe, Prio)
-  - Speichern als Standard
-  - Export/Import der Konfiguration (JSON)
-  - Sofortige Anwendung durch Klick auf ✓
-- Lokale Speicherung der Konfiguration im `localStorage`.
-- Sichtbar nur auf der Case-Listenansicht.
-- Reagiert auf DOM-Änderungen und SPA-Navigation.
-
-### 🎨 Beispielhafte Standardregeln
-| Begriff            | Farbe     | Prio |
-|--------------------|-----------|------|
-| User 1             | #ccffcc   | 30   |
-| User 2             | #ffffcc   | 20   |
-| Complaint - Prio   | #ffcccc   | 10   |
+## Inhalt
+- [Installation](#installation)
+- [Funktionen](#funktionen)
+- [Steuerfenster](#steuerfenster)
+- [Export / Import](#export--import)
+- [Auto-Refresh](#auto-refresh)
+- [Standard zurücksetzen](#standard-zurücksetzen)
+- [Entwicklung](#entwicklung)
+- [Versionierung & Updates](#versionierung--updates)
+- [Troubleshooting](#troubleshooting)
+- [Lizenz](#lizenz)
 
 ---
 
-## 🛠 Installation
-1. **Tampermonkey installieren** (falls noch nicht vorhanden): [https://www.tampermonkey.net/](https://www.tampermonkey.net/)
-2. Skripte importieren:
-   - Öffne Tampermonkey Dashboard → „+“ → Code einfügen → Speichern
-   - Alternativ: `.user.js` Datei erstellen und per Drag & Drop in Tampermonkey ziehen
+## Installation
+
+1. **Tampermonkey** im Browser installieren (Chrome, Edge, Firefox).
+2. Installationslink öffnen:  
+   `https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/Salesforce%20Highlight%20Rows%20%2B%20Refresh.user.js`
+3. Tampermonkey fragt -> **Installieren**.
+
+**Automatische Updates:** erfolgen über denselben Link. Bei neuen Versionen einfach die Datei im Repo aktualisieren (Version hochzählen), Tampermonkey zieht das Update.
 
 ---
 
-## 📌 Hinweise
-- Beide Skripte sind speziell für die URL-Struktur `https://endress.lightning.force.com/lightning/o/Case/*` geschrieben.
-- Anpassungen für andere Salesforce-Objekte oder Layouts sind möglich, erfordern aber ggf. Änderungen an den XPath-Selektoren.
+## Funktionen
+
+- **Regeln definieren:** Text (Substring-Match), Farbe (Colorpicker), **Prio** (Zahl; höher gewinnt)
+- **Live-Vorschau:** Farbe wird erst per **✓** übernommen (explizite Bestätigung)
+- **Langes Feld „Wort/Stichwort“:** 3× Breite, Titel-Tooltip zeigt vollständigen Text
+- **UI auf Case-Listen:** Schwebender Button **„Addon Steuerung“**
+- **Export/Import:** JSON-Datei (Textdatei), portabel zwischen Rechnern
+
+---
+
+## Steuerfenster
+
+- **Regel-Liste** mit Spalten: **Wort/Stichwort** · **Farbe** · **Prio** · **✓** · **✕**
+- **Neue Regel** unten hinzufügen (sticky)
+- **Auto-Refresh**-Optionen **ganz unten** (sticky):
+  - **Auto-Refresh (Sek.)**: Intervall einstellen
+  - **Auto-Refresh**: iOS-Style Toggle (**EIN** standardmäßig)
+  - **Übernehmen**: Intervall speichern & Timer neu starten
+- **Footer-Buttons**:  
+  - **Auf Standard** → setzt auf die im Skript hinterlegten Basis-Regeln zurück  
+  - **Export** → Regeln als Datei exportieren  
+  - **Import** → Datei einlesen
+
+---
+
+## Export / Import
+
+- **Export:** Klick → lädt eine `*.txt` (JSON) mit allen Regeln.
+- **Import:** JSON-Datei auswählen → Regeln werden übernommen.  
+  Erwartetes Format: Array von Objekten `{ term, color, priority }`.
+
+---
+
+## Auto-Refresh
+
+- Countdown erscheint **im Salesforce-Refresh-Button** (Zahl + Tooltip).
+- **Toggle** schaltet Refresh global ein/aus.
+- **Intervall** (Sekunden) wird lokal gespeichert (min. 5 s, max. 24 h).
+
+---
+
+## Standard zurücksetzen
+
+- **Auf Standard** setzt die Regeln auf die im Skript-Code hinterlegte Liste zurück (kein separater „gespeicherter Standard“).
+
+---
+
+## Entwicklung
+
+- Datei: `Salesforce Highlight Rows + Refresh.user.js`
+- Bitte bei Änderungen **`@version`** im Header erhöhen (SemVer).
+- Test-URL: `https://endress.lightning.force.com/lightning/o/Case/*`
+
+### Header (wichtig für Auto-Update)
+```js
+// @downloadURL  https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/Salesforce%20Highlight%20Rows%20%2B%20Refresh.user.js
+// @updateURL    https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/Salesforce%20Highlight%20Rows%20%2B%20Refresh.user.js
