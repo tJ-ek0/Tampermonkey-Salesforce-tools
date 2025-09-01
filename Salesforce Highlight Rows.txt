@@ -17,9 +17,11 @@
   const LS_DEFAULT_KEY = 'sfhl_default_v3';  // Nutzer-Standard
 
   const BASE_DEFAULT = [
-    { id: id(), term: 'Tobias Jurgan',    color: '#ccffcc', priority: 30 },
-    { id: id(), term: 'Torsten Hommen',   color: '#ffffcc', priority: 20 },
-    { id: id(), term: 'Complaint - Prio', color: '#ffcccc', priority: 10 }
+    { id: id(), term: '24/7, 2h, Visual Support, Smart Support',             color: '#ffcccc', priority: 30 },
+    { id: id(), term: '8/5, 4h, Visual Support, Smart Support',              color: '#ffe5b4', priority: 30 },
+    { id: id(), term: 'Support Case - SLA SOS',                              color: '#ffffcc', priority: 30 },
+    { id: id(), term: 'Complaint - Prio',                                    color: '#ffd8b1', priority: 20 },
+    { id: id(), term: 'ET:',                                                 color: '#f8d7da', priority: 30 }
   ];
 
   function id(){ return 'k' + Math.random().toString(36).slice(2,10); }
@@ -434,3 +436,4 @@
     return String(s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
   }
 })();
+
