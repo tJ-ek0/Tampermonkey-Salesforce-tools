@@ -9,7 +9,7 @@ Markiert Salesforce Case-Listen farblich anhand frei definierbarer Regeln und br
 - UI nur auf **Case-Listen** sichtbar
 
 > **Install/Update-URL (Tampermonkey):**  
-> `https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/Salesforce%20Highlight%20Rows%20%2B%20Refresh.user.js`
+> `https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/refs/heads/main/sfautorefreshhighlights.user.js`
 
 ---
 
@@ -31,7 +31,7 @@ Markiert Salesforce Case-Listen farblich anhand frei definierbarer Regeln und br
 
 1. **Tampermonkey** im Browser installieren (Chrome, Edge, Firefox).
 2. Installationslink öffnen:  
-   `https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/Salesforce%20Highlight%20Rows%20%2B%20Refresh.user.js`
+   `https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/refs/heads/main/sfautorefreshhighlights.user.js`
 3. Tampermonkey fragt -> **Installieren**.
 
 **Automatische Updates:** erfolgen über denselben Link. Bei neuen Versionen einfach die Datei im Repo aktualisieren (Version hochzählen), Tampermonkey zieht das Update.
