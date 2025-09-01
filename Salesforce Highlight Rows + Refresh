@@ -1,12 +1,17 @@
 // ==UserScript==
-// @name         Salesforce Highlight Rows + Auto Refresh
-// @namespace    http://tampermonkey.net/
-// @version      3.8.0
-// @description  Zeilen farblich markieren; Add-Zeile TEXT|FARBE|PRIO|✓; Button nur auf Case-List; Farbe mit ✓ bestätigen & sofort anwenden; Export/Import als Textdatei; ✓ links vom ✕; ▲ entfernt; "Auf Standard" = Skript-Defaults; Auto-Refresh mit Countdown, einstellbarem Intervall & Toggle (Standard: EIN).
+// @name         Salesforce List Markierung + Refresh
+// @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
+// @version      4.0.0
+// @description  Markiert Salesforce-Case-Listen farblich (Regeln), Export/Import, einstellbare Prioritäten; Auto-Refresh mit Countdown & Toggle; Steuerfenster unten mit Refresh-Optionen.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
+// @license      MIT
 // @match        https://endress.lightning.force.com/lightning/o/Case/*
 // @grant        none
 // @run-at       document-end
+// @homepageURL  https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
+// @supportURL   https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools/issues
+// @downloadURL  https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/Salesforce%20Highlight%20Rows%20%2B%20Refresh.user.js
+// @updateURL    https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/Salesforce%20Highlight%20Rows%20%2B%20Refresh.user.js
 // ==/UserScript==
 
 (function () {
@@ -120,8 +125,11 @@
     }
     .tm-sfhl-apply.pending { background:#1d4ed8; }
 
-    /* Add-Zeile (unten fixiert) */
-    .tm-sfhl-addwrap { position: sticky; bottom: 0; background: #fff; padding: 10px 14px 12px; border-top: 1px solid #e5e7eb; box-shadow: 0 -6px 16px rgba(0,0,0,.06); }
+    /* Add-Zeile + Settings gemeinsam sticky unten */
+    .tm-sfhl-addwrap {
+      position: sticky; bottom: 0; background: #fff; padding: 10px 14px 12px;
+      border-top: 1px solid #e5e7eb; box-shadow: 0 -6px 16px rgba(0,0,0,.06);
+    }
     .tm-sfhl-addhead { display:grid; grid-template-columns: minmax(0,3fr) 40px 84px 44px; gap:8px; font-weight:600; font-size:12px; opacity:.7; margin:0 0 6px; }
     .tm-sfhl-add { display:grid; grid-template-columns: minmax(0,3fr) 40px 84px 44px; gap:8px; align-items:center; }
     .tm-sfhl-add .okbtn { height:36px; min-width:36px; border-radius:10px; border:1px solid #2563eb; background:#2563eb; color:#fff; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:18px; line-height:1; }
@@ -129,10 +137,10 @@
     .tm-sfhl-add input[type="text"], .tm-sfhl-add input[type="number"] { padding:8px 10px; border:1px solid #d1d5db; border-radius:8px; }
     .tm-sfhl-add input[type="color"] { height:28px; border:1px solid #d1d5db; border-radius:6px; padding:0; width:100%; }
 
-    /* Settings-Zeile (kompakter) */
+    /* Settings (unten) */
     .tm-sfhl-settings {
       display:grid; grid-template-columns: auto 80px auto 110px; gap:8px;
-      align-items: center; padding: 8px 14px 0;
+      align-items:center; margin-top:10px; padding-top:8px; border-top:1px solid #e5e7eb;
     }
     .tm-sfhl-settings label { font-weight:600; opacity:.85; }
     .tm-sfhl-settings input[type="number"] {
@@ -142,10 +150,8 @@
       height:30px; border-radius:8px; border:1px solid #2563eb; background:#2563eb; color:#fff; cursor:pointer; padding:0 10px;
     }
 
-    /* Toggle Switch */
-    .tm-toggle {
-      position: relative; width: 46px; height: 24px; display:inline-block;
-    }
+    /* Toggle Switch (iOS-Style) */
+    .tm-toggle { position: relative; width: 46px; height: 24px; display:inline-block; }
     .tm-toggle input { opacity:0; width:0; height:0; position:absolute; }
     .tm-toggle .slider {
       position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
@@ -184,20 +190,6 @@
         </div>
         <div class="tm-sfhl-list"></div>
 
-        <!-- Settings: Auto-Refresh -->
-        <div class="tm-sfhl-settings">
-          <label for="sfhl-refresh-secs">Auto-Refresh (Sek.)</label>
-          <input id="sfhl-refresh-secs" type="number" min="5" step="5" placeholder="60">
-          <label class="switch" title="Auto-Refresh ein/aus" style="display:flex;align-items:center;gap:8px;">
-            <span>Auto-Refresh</span>
-            <span class="tm-toggle">
-              <input id="sfhl-refresh-enabled" type="checkbox">
-              <span class="slider"></span>
-            </span>
-          </label>
-          <button class="tm-sfhl-apply-refresh" title="Intervall übernehmen">Übernehmen</button>
-        </div>
-
         <div class="tm-sfhl-footer">
           <button class="tm-sfhl-reset">Auf Standard</button>
           <button class="tm-sfhl-export">Export</button>
@@ -205,6 +197,7 @@
         </div>
       </div>
 
+      <!-- Sticky unten: Add-Zeile + Auto-Refresh-Settings -->
       <div class="tm-sfhl-addwrap">
         <div class="tm-sfhl-addhead"><div>Wort/Stichwort</div><div>Farbe</div><div>Prio</div><div>✓</div></div>
         <form class="tm-sfhl-add" autocomplete="off">
@@ -213,6 +206,19 @@
           <input type="number" value="5" step="1" title="Priorität (höher = gewinnt)" class="add-prio">
           <button type="submit" class="okbtn" title="Hinzufügen" aria-label="Hinzufügen">✓</button>
         </form>
+
+        <div class="tm-sfhl-settings">
+          <label for="sfhl-refresh-secs">Auto-Refresh (Sek.)</label>
+          <input id="sfhl-refresh-secs" type="number" min="5" step="5" placeholder="60">
+          <label title="Auto-Refresh ein/aus" style="display:flex;align-items:center;gap:8px;">
+            <span>Auto-Refresh</span>
+            <span class="tm-toggle">
+              <input id="sfhl-refresh-enabled" type="checkbox">
+              <span class="slider"></span>
+            </span>
+          </label>
+          <button class="tm-sfhl-apply-refresh" title="Intervall übernehmen">Übernehmen</button>
+        </div>
       </div>
     </div>
   `;
@@ -226,6 +232,7 @@
   const addTermEl     = panel.querySelector('.add-term');
   const addColorEl    = panel.querySelector('.add-color');
   const addPrioEl     = panel.querySelector('.add-prio');
+
   const refreshInput  = panel.querySelector('#sfhl-refresh-secs');
   const refreshApplyBtn = panel.querySelector('.tm-sfhl-apply-refresh');
   const refreshEnabledCb = panel.querySelector('#sfhl-refresh-enabled');
@@ -234,14 +241,14 @@
   refreshInput.value = String(loadRefreshSecs());
   refreshEnabledCb.checked = loadRefreshEnabled();
 
-  // === verstecktes <input type="file"> für Import ===
+  // verstecktes File-Input für Import
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.accept = '.txt,.json,application/json,text/plain';
   fileInput.style.display = 'none';
   document.documentElement.appendChild(fileInput);
 
-  // Add-Form: Enter = hinzufügen
+  // Add-Form
   addForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const term = (addTermEl.value || '').trim();
@@ -256,7 +263,7 @@
     addTermEl.focus();
   });
 
-  // Reset auf Skript-Standard
+  // Reset auf Skript-Defaults
   panel.querySelector('.tm-sfhl-reset').onclick  = () => {
     if (!confirm('Auf Skript-Standard (im Code hinterlegte Regeln) zurücksetzen?')) return;
     CONFIG = getDefaultConfig();
@@ -265,7 +272,7 @@
     rescanAllSoon(true);
   };
 
-  // ===== Export / Import über Datei =====
+  // Export / Import
   panel.querySelector('.tm-sfhl-export').onclick = () => {
     try {
       const data = JSON.stringify(CONFIG, null, 2);
@@ -285,12 +292,7 @@
       alert('Export fehlgeschlagen.');
     }
   };
-
-  panel.querySelector('.tm-sfhl-import').onclick = () => {
-    fileInput.value = ''; // reset für erneute Auswahl derselben Datei
-    fileInput.click();
-  };
-
+  panel.querySelector('.tm-sfhl-import').onclick = () => { fileInput.value = ''; fileInput.click(); };
   fileInput.addEventListener('change', async (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -305,12 +307,11 @@
         priority: Number.isFinite(e.priority) ? e.priority : 0
       }));
       saveConfig(CONFIG);
-      renderList();
-      rescanAllSoon(true);
+      renderList(); rescanAllSoon(true);
       alert('Import erfolgreich.');
     } catch (err) {
       console.error(err);
-      alert('Import fehlgeschlagen: Ungültiges Format (erwartet Array von Objekten mit term, color, priority).');
+      alert('Import fehlgeschlagen: Ungültiges Format (Array von Objekten mit term, color, priority).');
     }
   });
 
@@ -333,13 +334,12 @@
       listEl.appendChild(row);
     }
 
-    // Events: Text
+    // Events
     listEl.querySelectorAll('.term').forEach(inp => inp.onchange = e => {
       const it = CONFIG.find(x=>x.id === e.target.dataset.id); if (!it) return;
       it.term = e.target.value; saveConfig(CONFIG); rescanAllSoon(true);
     });
 
-    // Events: Farbe -> Pending markieren; Enter = übernehmen (drückt ✓)
     listEl.querySelectorAll('.color').forEach(inp => {
       inp.addEventListener('input', (e) => {
         const applyBtn = e.target.closest('.tm-sfhl-row').querySelector('.tm-sfhl-apply');
@@ -354,7 +354,6 @@
       });
     });
 
-    // Events: ✓ Farbe übernehmen -> speichern + sofort neu markieren
     listEl.querySelectorAll('.tm-sfhl-apply').forEach(btn => {
       btn.onclick = (e) => {
         const id = e.currentTarget.dataset.id;
@@ -364,18 +363,15 @@
         it.color = input.value || '#ffffcc';
         saveConfig(CONFIG);
         e.currentTarget.classList.remove('pending');
-        // sofort auf Tabelle anwenden
         highlightRows(true);
       };
     });
 
-    // Events: Prio
     listEl.querySelectorAll('.prio').forEach(inp => inp.onchange = e => {
       const it = CONFIG.find(x=>x.id === e.target.dataset.id); if (!it) return;
       it.priority = parseInt(e.target.value,10) || 0; saveConfig(CONFIG); renderList(); rescanAllSoon(true);
     });
 
-    // Events: ✕
     listEl.querySelectorAll('.del').forEach(btn => btn.onclick = e => {
       const id = e.target.closest('.tm-sfhl-row').querySelector('.term').dataset.id;
       CONFIG = CONFIG.filter(x=>x.id !== id); saveConfig(CONFIG); renderList(); rescanAllSoon(true);
