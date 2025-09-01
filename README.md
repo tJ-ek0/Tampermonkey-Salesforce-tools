@@ -98,11 +98,9 @@ Markiert Salesforce Case-Listen farblich anhand frei definierbarer Regeln und br
 
 ## Entwicklung
 
-- Datei: `Salesforce Highlight Rows + Refresh.user.js`
-- Bitte bei Änderungen **`@version`** im Header erhöhen (SemVer).
 - Test-URL: `https://endress.lightning.force.com/lightning/o/Case/*`
 
 ### Header (wichtig für Auto-Update)
 ```js
-// @downloadURL  https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/Salesforce%20Highlight%20Rows%20%2B%20Refresh.user.js
-// @updateURL    https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/Salesforce%20Highlight%20Rows%20%2B%20Refresh.user.js
+// @downloadURL  https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/refs/heads/main/sfautorefreshhighlights.user.js
+// @updateURL    https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/refs/heads/main/sfautorefreshhighlights.user.js
