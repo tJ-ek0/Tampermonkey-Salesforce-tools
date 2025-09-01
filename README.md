@@ -29,10 +29,16 @@ Markiert Salesforce Case-Listen farblich anhand frei definierbarer Regeln und br
 
 ## Installation
 
-1. **Tampermonkey** im Browser installieren (Chrome, Edge, Firefox).
-2. Installationslink öffnen:  
+1. **Tampermonkey** im Browser installieren (Chrome, Edge).
+      [Chrome](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=de)
+      [Edge](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
+2. Entwicklermodus einschalten.
+      [Edge](edge://extensions/) Linke seite Entwicklermodus einschalten
+      [Chrome](chrome://extensions/) Oben Rechts Entwicklermodus einschalten
+      
+4. Installationslink öffnen:  
    [https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/refs/heads/main/sfautorefreshhighlights.user.js](https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/refs/heads/main/sfautorefreshhighlights.user.js)
-3. Tampermonkey fragt -> **Installieren**.
+5. Tampermonkey fragt -> **Installieren**.
 
 **Automatische Updates:** erfolgen über denselben Link. Bei neuen Versionen einfach die Datei im Repo aktualisieren (Version hochzählen), Tampermonkey zieht das Update.
 
