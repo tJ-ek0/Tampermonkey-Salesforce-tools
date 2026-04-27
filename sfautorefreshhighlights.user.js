@@ -655,7 +655,7 @@
     for (const row of rows) {
       const cells = row.querySelectorAll('td');
       let txt = '';
-      for (const c of cells) txt += ' ' + (c.textContent || '');
+      for (const c of cells) txt += ' ' + (c.innerText || c.textContent || '');
       if (matchesRule(txt, term)) n++;
     }
     return n;
@@ -2702,9 +2702,9 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   function markRow(row,m) { row.classList.add('tm-sfhl-mark'); row.style.setProperty('--sfhl-bg',m.color,'important'); row.dataset.sfhlRule=m.id; }
   function unmarkRow(row) { row.classList.remove('tm-sfhl-mark','sfhl-new-match'); row.style.removeProperty('--sfhl-bg'); delete row.dataset.sfhlRule; }
   function updateHighlightCount() { const n=document.querySelectorAll('.tm-sfhl-mark').length;const c=triggerBtn.querySelector('.sfhl-count');if(c)c.textContent=n>0?`${n} markiert`:''; }
-  function highlightRows(full=false) { const rows=getRows();if(rows.length===0)return false;for(const row of rows){if(full)unmarkRow(row);const cells=row.querySelectorAll('td');let txt='';for(const c of cells)txt+=' '+(c.textContent||'');const m=bestMatch(txt);if(m)markRow(row,m);else if(full)unmarkRow(row);}updateHighlightCount();return true; }
-  function snapshotMarked() { const set=new Set();document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.textContent||'');set.add(t);});return set; }
-  function highlightAndBlink(snap) { highlightRows(true);if(!snap)return;document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.textContent||'');if(!snap.has(t)){r.classList.add('sfhl-new-match');setTimeout(()=>r.classList.remove('sfhl-new-match'),3000);}}); }
+  function highlightRows(full=false) { const rows=getRows();if(rows.length===0)return false;for(const row of rows){if(full)unmarkRow(row);const cells=row.querySelectorAll('td');let txt='';for(const c of cells)txt+=' '+(c.innerText||c.textContent||'');const m=bestMatch(txt);if(m)markRow(row,m);else if(full)unmarkRow(row);}updateHighlightCount();return true; }
+  function snapshotMarked() { const set=new Set();document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||'');set.add(t);});return set; }
+  function highlightAndBlink(snap) { highlightRows(true);if(!snap)return;document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||'');if(!snap.has(t)){r.classList.add('sfhl-new-match');setTimeout(()=>r.classList.remove('sfhl-new-match'),3000);}}); }
 
   // ===== Visibility =====
   function isCaseListPage() {
