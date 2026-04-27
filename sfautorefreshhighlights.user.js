@@ -5,7 +5,8 @@
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
-// @match        https://endress.lightning.force.com/*
+// @match        https://endress.lightning.force.com/lightning/o/Case/list*
+// @match        https://endress.lightning.force.com/lightning/r/WorkOrder*
 // @grant        none
 // @run-at       document-end
 // @noframes
@@ -2665,7 +2666,10 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   function highlightAndBlink(snap) { highlightRows(true);if(!snap)return;document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.textContent||'');if(!snap.has(t)){r.classList.add('sfhl-new-match');setTimeout(()=>r.classList.remove('sfhl-new-match'),3000);}}); }
 
   // ===== Visibility =====
-  function isCaseListPage() { return location.href.includes('/lightning/o/Case/'); }
+  function isCaseListPage() {
+    const h = location.href;
+    return h.includes('/lightning/o/Case/list') || h.includes('/lightning/r/WorkOrder');
+  }
   function updateVis() { triggerBtn.style.display = 'inline-flex'; }
   updateVis();
   const origPush = history.pushState;
