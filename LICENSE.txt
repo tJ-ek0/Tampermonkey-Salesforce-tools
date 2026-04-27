@@ -1,6 +1,7 @@
 MIT License
 
-Copyright (c) 2025 Tobias Jurgan
+Copyright (c) 2025–2026 Tobias Jurgan
+Endress+Hauser (Deutschland) GmbH+Co. KG, Weil am Rhein
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +20,26 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+---
+
+HINWEISE / NOTICES
+
+1. Markenrechte / Trademarks
+   "Salesforce" und "Salesforce Lightning" sind eingetragene Marken der
+   Salesforce, Inc. Dieses Projekt steht in keiner Verbindung zu Salesforce,
+   Inc. und wird von dieser weder gesponsert noch unterstützt.
+
+2. Datenschutz / Data Protection
+   Das Skript verarbeitet ausschließlich Daten, die bereits im Browser des
+   angemeldeten Benutzers sichtbar sind (DOM-Lesezugriff). Es werden keine
+   Daten an externe Server übertragen. Alle Einstellungen und Textbausteine
+   werden ausschließlich im lokalen Browserspeicher (localStorage) des
+   jeweiligen Geräts gespeichert. Eine Verarbeitung personenbezogener Daten
+   findet nur im Rahmen der bestehenden CRM-Nutzung statt.
+
+3. Bestimmungsgemäßer Einsatz / Intended Use
+   Das Skript ist ausschließlich für den internen Einsatz durch autorisierte
+   Mitarbeiter im Rahmen ihrer dienstlichen Tätigkeit bestimmt. Eine
+   Nutzung außerhalb des dienstlichen Kontexts oder auf nicht autorisierten
+   Systemen ist nicht gestattet.

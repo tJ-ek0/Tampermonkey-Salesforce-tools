@@ -1,146 +1,185 @@
-# Salesforce List Markierung + Refresh (Tampermonkey)
+# Salesforce Tools – Tampermonkey Userscript
 
-Markiert Salesforce Case-Listen farblich anhand frei definierbarer Regeln. Modernes Steuerungspanel mit Drag & Drop, Farbpalette, Suchfeld und Auto-Refresh.
+> **Internes Werkzeug** für autorisierte Mitarbeiter von Endress+Hauser (Deutschland) GmbH+Co. KG.
+> Entwickelt von Tobias Jurgan · Technischer Support · Version 4.0.0
 
-**Highlights:**
-- **Drag & Drop Priorität** — Regeln per Ziehen sortieren, oben gewinnt
-- **10 Pastell-Presets** — Optimiert für Lesbarkeit, ein Klick genügt
-- **Quick-Toggle** — Regeln ein-/ausschalten ohne zu löschen
-- **Live-Vorschau** — Beim Anlegen sehen wie viele Zeilen matchen
-- **Suchfeld** — Regeln im Panel filtern
-- **Blink-Effekt** — Neue Treffer nach Auto-Refresh blinken 3×
-- **Resize** — Panel-Breite per Drag anpassbar (320–700 px)
-- **Tastenkürzel** — `Alt+R` öffnet/schließt das Panel
-- **Export/Import** — Regeln als JSON-Datei portabel zwischen Rechnern
-- **Auto-Refresh** — Countdown im SF-Refresh-Button, konfigurierbares Intervall
-
-> **Install/Update-URL (Tampermonkey):**
-> [https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.user.js](https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.user.js)
+Erweitert Salesforce Lightning um drei Hauptfunktionen:
+**Zeilen-Markierung** in Case-Listen, **Text-Snippets** mit Platzhalterauflösung und **Auto-Refresh** mit Countdown.
 
 ---
 
 ## Inhalt
+
 - [Installation](#installation)
-- [Funktionen](#funktionen)
-- [Steuerfenster](#steuerfenster)
-- [Farbpalette](#farbpalette)
-- [Drag & Drop Priorität](#drag--drop-priorität)
-- [Export / Import](#export--import)
+- [Funktionen im Überblick](#funktionen-im-überblick)
+- [Markierung (Regeln)](#markierung-regeln)
+- [Snippets / Textbausteine](#snippets--textbausteine)
 - [Auto-Refresh](#auto-refresh)
+- [Einstellungen](#einstellungen)
+- [Export / Import](#export--import)
 - [Tastenkürzel](#tastenkürzel)
-- [Update von älteren Versionen](#update-von-älteren-versionen)
-- [Entwicklung](#entwicklung)
+- [Datenschutz](#datenschutz)
 - [Troubleshooting](#troubleshooting)
+- [Entwicklung](#entwicklung)
 - [Lizenz](#lizenz)
 
 ---
 
 ## Installation
 
-1. **Tampermonkey** im Browser installieren (Chrome, Edge).
+1. **Tampermonkey** im Browser installieren:
    - [Chrome](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=de)
    - [Edge](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
-2. **Entwicklermodus einschalten:**
-   - **Edge:** `edge://extensions/` → linke Seite „Entwicklermodus" einschalten
-   - **Chrome:** `chrome://extensions/` → oben rechts „Entwicklermodus" einschalten → bei Tampermonkey auf „Details" klicken → „Nutzerscripts zulassen" aktivieren
+
+2. **Entwicklermodus aktivieren:**
+   - **Chrome:** `chrome://extensions/` → „Entwicklermodus" → bei Tampermonkey „Details" → „Nutzerscripts zulassen"
+   - **Edge:** `edge://extensions/` → „Entwicklermodus" einschalten
+
 3. **Installationslink öffnen:**
-   [https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.user.js](https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.user.js)
-4. Tampermonkey fragt → **Installieren** klicken.
-5. Falls das Skript nicht sofort lädt: Browser einmal aktualisieren (F5).
+   [sfautorefreshhighlights.user.js](https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.user.js)
 
-**Automatische Updates:** Tampermonkey prüft regelmäßig auf neue Versionen und installiert Updates automatisch.
+4. Tampermonkey fragt zur Bestätigung → **Installieren** klicken.
+
+**Automatische Updates:** Tampermonkey prüft regelmäßig auf neue Versionen und installiert Updates selbstständig.
 
 ---
 
-## Funktionen
+## Funktionen im Überblick
 
-| Feature | Beschreibung |
+| Funktion | Beschreibung |
 |---|---|
-| **Regeln definieren** | Stichwort eingeben → Farbe wählen → Zeilen werden automatisch markiert |
-| **Drag & Drop** | Regeln per Ziehen sortieren. Position = Priorität (oben gewinnt) |
-| **Quick-Toggle** | Regeln mit dem Auge-Symbol ein-/ausschalten. Deaktivierte Regeln bleiben gespeichert |
-| **Farbpalette** | 10 Pastell-Presets + eigene Farbe per Browser-Colorpicker |
-| **Live-Vorschau** | Beim Anlegen zeigt ein Badge wie viele SF-Zeilen matchen |
-| **Suchfeld** | Regeln im Panel live filtern |
-| **Blink-Effekt** | Nach Auto-Refresh blinken neue Treffer 3× auf |
-| **Resize** | Panel-Breite per Drag am linken Rand anpassen (320–700 px, wird gespeichert) |
-| **Export/Import** | JSON-Datei, portabel zwischen Rechnern und Kollegen |
-| **Auto-Refresh** | Konfigurierbarer Countdown im SF-Refresh-Button |
+| **Zeilen-Markierung** | Case-Listenzeilen farblich hervorheben nach frei definierbaren Regeln |
+| **Snippets** | Textbausteine per Kürzel in beliebige SF-Textfelder einfügen |
+| **Platzhalterauflösung** | `{name}`, `{datum}`, `{!Case.CaseNumber}` etc. werden automatisch aus der Seite befüllt |
+| **Auto-Refresh** | Automatischer Refresh der Case-Liste mit Countdown im SF-Button |
+| **Auto-Wrap** | Anrede und Signatur automatisch um jeden Textbaustein legen |
+| **Rich-Text-Editor** | Fett, Kursiv, Links, Listen direkt im Snippet-Editor |
+| **Import/Export** | Regeln und Snippets als JSON-Datei sichern und teilen |
+| **Sprache** | Deutsch/Englisch pro Snippet, Sprachumschaltung beim Einfügen |
 
 ---
 
-## Steuerfenster
+## Markierung (Regeln)
 
-Das Panel öffnet sich als Sidebar von rechts. Zugang über:
-- **Pill-Button** unten rechts (zeigt Anzahl markierter Zeilen)
-- **Alt+R** Tastenkürzel
-- **Escape** oder Klick auf den Hintergrund zum Schließen
+Regeln werden in der angezeigten Reihenfolge geprüft. **Die erste passende Regel gewinnt.**
 
-### Aufbau
-- **Suchfeld** — Regeln live filtern
-- **Regelliste** — Jede Zeile: Grip-Handle · Stichwort · Farbfeld · An/Aus · Löschen
-- **„+ Neue Regel"** — Klappt Formular auf mit Live-Trefferanzeige
-- **Auto-Refresh** — Aufklappbar, mit Intervall-Eingabe und Toggle
-- **⋯ Menü** — Export, Import, Auf Standard zurücksetzen
+### Stichwort-Syntax
 
----
-
-## Farbpalette
-
-Klick auf ein Farbfeld öffnet die Palette:
-
-| Farbe | Hex | RGB |
+| Operator | Bedeutung | Beispiel |
 |---|---|---|
-| Grün | `#E6FFE6` | 230, 255, 230 |
-| Rot | `#FFCCCC` | 255, 204, 204 |
-| Gelb | `#FFFFCC` | 255, 255, 204 |
-| Orange | `#FFE5CC` | 255, 229, 204 |
-| Blau | `#E6F0FF` | 230, 240, 255 |
-| Lila | `#F0E6FF` | 240, 230, 255 |
-| Türkis | `#E6FFFA` | 230, 255, 250 |
-| Pink | `#FFE6F0` | 255, 230, 240 |
-| Pfirsich | `#FFF5E6` | 255, 245, 230 |
-| Grau | `#F0F0F0` | 240, 240, 240 |
+| `Begriff` | Einfache Textsuche (Groß-/Kleinschreibung egal) | `dringend` |
+| `A + B` | UND: beide müssen vorkommen | `SLA + dringend` |
+| `A \| B` | ODER: mindestens einer | `urgent \| eilig` |
+| `!Begriff` | NICHT: darf nicht vorkommen | `SLA + !closed` |
+| `/regex/i` | Regulärer Ausdruck | `/Fehler\s*\d+/i` |
 
-Alle Farben sind bewusst hell (RGB 200–255) damit schwarzer Text darauf immer gut lesbar bleibt.
+Kombinationen sind möglich: `SLA + dringend | urgent | eilig`
 
-**„Eigene Farbe…"** öffnet den nativen Browser-Colorpicker für volle Freiheit.
+### Ordner
+
+Regeln lassen sich in Ordnern gruppieren. Klick auf den „Ordner"-Button im Panel erstellt einen neuen Ordner. Regeln per Drag & Drop in Ordner ziehen.
 
 ---
 
-## Drag & Drop Priorität
+## Snippets / Textbausteine
 
-Regeln werden per Drag & Drop sortiert. **Die erste Regel in der Liste gewinnt.** Wenn eine Zeile zu mehreren Regeln passt, wird die Farbe der höchsten (= obersten) Regel angewendet.
+Tippt man den konfigurierten Prefix (Standard: `;;`) in ein beliebiges Textfeld, öffnet sich ein Dropdown mit passenden Snippets.
 
-- Greifen: Grip-Handle (⠿) links an jeder Zeile
-- Ziehen: Blaue Linie zeigt die Einfügeposition
-- Loslassen: Reihenfolge wird sofort gespeichert
+### Einfügen
 
----
-
-## Export / Import
-
-- **Export:** ⋯ Menü → Export → lädt eine `.txt`-Datei (JSON) mit allen Regeln
-- **Import:** ⋯ Menü → Import → Datei auswählen → Regeln werden übernommen
-
-**Format (v3.4.0+):**
-```json
-[
-  { "id": "k1abc2def", "term": "24/7 Support", "color": "#ffcccc", "enabled": true },
-  { "id": "k3ghi4jkl", "term": "Complaint",    "color": "#ffd8b1", "enabled": false }
-]
+```
+;;anrede      → öffnet Dropdown, filtert nach "anrede"
+;;            → zeigt alle Snippets
+;;en gruss    → zeigt nur EN-Variante
+Tab / Enter   → ausgewähltes Snippet einfügen
+↑ ↓           → im Dropdown navigieren
+Esc           → Dropdown schließen
 ```
 
-Älteres Format (mit `priority`-Feld) wird beim Import automatisch migriert.
+### Platzhalter
+
+Platzhalter werden beim Einfügen automatisch aus der aktuellen SF-Seite befüllt:
+
+| Platzhalter | Wert |
+|---|---|
+| `{name}` | Dein Name (aus Einstellungen) |
+| `{datum}` | Heutiges Datum (TT.MM.JJJJ) |
+| `{uhrzeit}` | Aktuelle Uhrzeit |
+| `{case}` | Vorgangsnummer |
+| `{betreff}` | Betreff des Vorgangs |
+| `{anrede}` | Anrede des Kontakts |
+| `{nachname}` | Nachname des Kontakts |
+| `{kontakt}` | Voller Name des Kontakts |
+| `{telefon}` | Telefonnummer |
+| `{firma}` | Firmenname (Account) |
+| `{seriennummer}` | Seriennummer aus dem Case |
+| `{|}` | Cursor-Position nach dem Einfügen |
+| `{eingabe:Beschriftung}` | Fragt beim Einfügen interaktiv nach dem Wert |
+| `{!Case.CaseNumber}` | SF-Merge-Feld: Vorgangsnummer |
+| `{!Contact.Salutation}` | SF-Merge-Feld: Anrede des Kontakts |
+| `{!Contact.LastName}` | SF-Merge-Feld: Nachname des Kontakts |
+| `{!Account.FTXTAccountName__c}` | SF-Merge-Feld: Account-Name |
+
+### Auto-Wrap
+
+Wenn in den Einstellungen aktiviert, wird beim Einfügen eines Snippets automatisch die konfigurierte Anrede davor und die Signatur danach eingefügt. Gilt nicht, wenn das Snippet selbst die Anrede oder Signatur ist.
+
+### Snippet teilen
+
+Im Editor: „Teilen ↗" kopiert einen Import-Link in die Zwischenablage. Kollegen können den Link im Browser öffnen — das Skript importiert das Snippet automatisch nach Bestätigung.
 
 ---
 
 ## Auto-Refresh
 
-- **Countdown** erscheint direkt im Salesforce-Refresh-Button
-- **Toggle** schaltet Refresh global ein/aus
-- **Intervall** frei einstellbar (min. 5 Sek., max. 24 Std.)
-- **Blink-Effekt:** Nach jedem Auto-Refresh blinken **neue** Treffer 3× auf — so siehst du sofort was sich geändert hat
+- Nur aktiv auf Case-Listen- und WorkOrder-Seiten
+- Countdown erscheint direkt im Salesforce-Refresh-Button
+- Refresh wird **übersprungen** wenn der Benutzer gerade aktiv tippt (verhindert Datenverlust)
+- Neu eingetroffene Zeilen blinken nach dem Refresh kurz auf
+- Intervall frei einstellbar (min. 5 Sek.)
+
+---
+
+## Einstellungen
+
+| Einstellung | Beschreibung |
+|---|---|
+| **Trigger-Prefix** | Zeichen das das Snippet-Dropdown auslöst (Standard: `;;`) |
+| **Dein Name** | Wird für den `{name}`-Platzhalter verwendet |
+| **Default language** | Welche Snippet-Sprache standardmäßig verwendet wird (DE/EN) |
+| **Auto-Wrap** | Anrede und Signatur automatisch ein-/ausschalten |
+| **Anrede / Signatur** | Welche Snippets für Auto-Wrap genutzt werden |
+
+---
+
+## Export / Import
+
+### Export
+
+Im Panel → Tab „Einstellungen":
+- **↓ Alles exportieren** — Regeln + Snippets als eine JSON-Datei
+- **↓ Markierungen** — nur Regeln
+- **↓ Snippets** — nur Snippets
+
+### Import
+
+- **↑ Datei importieren** — JSON-Datei auswählen (ersetzt bestehende Daten)
+
+### Format (v4.0.0)
+
+```json
+{
+  "rules": [
+    { "id": "k1abc", "term": "24/7 + SLA", "color": "#ffcccc", "enabled": true, "folder": null }
+  ],
+  "snippets": [
+    { "id": "k2def", "trigger": "anrede", "label": "Anrede DE", "body": "Guten Tag ...", "bodyEn": "Dear ...", "category": "Standard", "richText": true }
+  ],
+  "folders": [],
+  "prefix": ";;",
+  "username": "Max Mustermann"
+}
+```
 
 ---
 
@@ -149,45 +188,29 @@ Regeln werden per Drag & Drop sortiert. **Die erste Regel in der Liste gewinnt.*
 | Kürzel | Aktion |
 |---|---|
 | `Alt+R` | Panel öffnen/schließen |
-| `Escape` | Panel schließen |
-| `Enter` | Neue Regel bestätigen (im Eingabefeld) |
+| `Esc` | Panel oder Snippet-Dropdown schließen |
+| `;;` | Snippet-Dropdown öffnen (in Textfeldern) |
+| `↑ ↓` | Im Snippet-Dropdown navigieren |
+| `Enter` / `Tab` | Snippet einfügen |
 
 ---
 
-## Update von älteren Versionen
+## Datenschutz
 
-Beim Update von einer beliebigen älteren Version (v1.x, v2.x, v3.0–v3.3) werden bestehende Regeln **automatisch migriert:**
+Das Skript verarbeitet Daten ausschließlich lokal im Browser des angemeldeten Benutzers.
 
-- Alte Regeln (mit `priority`-Feld) werden nach Priorität sortiert ins neue Format konvertiert
-- Alle Regeln starten als „An" (enabled)
-- Auto-Refresh-Einstellungen bleiben erhalten
-- Der Migrationsprozess läuft einmalig beim ersten Start
+**Was das Skript tut:**
+- Liest Feldwerte aus dem Salesforce-DOM, die dem Benutzer bereits angezeigt werden (Vorgangsnummer, Kontaktname, Anrede, Telefon u. a.)
+- Speichert Regeln, Snippets und Einstellungen im lokalen Browserspeicher (`localStorage`) des jeweiligen Geräts
+- Stellt Textbausteine mit aufgelösten Platzhaltern zur Verfügung
 
-In der Browser-Konsole (F12) erscheint: `[SFHL] Migrated v3 config -> X rules`
+**Was das Skript nicht tut:**
+- Überträgt keine Daten an externe Server oder Dritte
+- Speichert keine Daten außerhalb des lokalen Browsers
+- Greift nicht auf Salesforce-APIs oder Backend-Dienste zu
+- Zeichnet keine Nutzerinteraktionen auf
 
----
-
-## Entwicklung
-
-- **Match-URL:** `https://endress.lightning.force.com/lightning/o/Case/*`
-- **Storage Keys:**
-  - `sfhl_config_v4` — Regeln (Array, Reihenfolge = Priorität)
-  - `sfhl_refresh_secs_v1` — Refresh-Intervall in Sekunden
-  - `sfhl_refresh_enabled` — Refresh ein/aus (`"1"` / `"0"`)
-  - `sfhl_panel_width` — Panel-Breite in Pixeln
-
-### Header (wichtig für Auto-Update)
-```js
-// @downloadURL  https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.user.js
-// @updateURL    https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.user.js
-```
-
-### Selektoren
-Das Skript nutzt eine Multi-Strategie-Kaskade für die Erkennung von Tabellen-Zeilen und dem Refresh-Button. CSS-Selektoren werden bevorzugt, XPath nur als Fallback. In der Konsole wird geloggt welche Strategie aktiv ist:
-```
-[SFHL] Rows: "css:lst-common" (24)
-[SFHL] Refresh: "css:title"
-```
+**Hinweis:** Die Nutzung des Skripts erfolgt im Rahmen der bestehenden CRM-Nutzung und der dafür geltenden betrieblichen Regelungen. Es gelten die Datenschutzrichtlinien der Endress+Hauser (Deutschland) GmbH+Co. KG sowie die Vorgaben der DSGVO.
 
 ---
 
@@ -195,16 +218,52 @@ Das Skript nutzt eine Multi-Strategie-Kaskade für die Erkennung von Tabellen-Ze
 
 | Problem | Lösung |
 |---|---|
-| Skript lädt nicht | Browser komplett neu laden (F5). Tampermonkey-Icon prüfen ob das Skript aktiv ist |
-| Button nicht sichtbar | Nur auf Case-Listen-Seiten aktiv. URL muss mit `endress.lightning.force.com/lightning/o/Case/` beginnen |
-| Regeln verschwunden | Browserdaten / localStorage gelöscht? → Import-Funktion nutzen |
-| Auto-Refresh funktioniert nicht | Konsole (F12) prüfen ob `[SFHL] Refresh: "..."` erscheint. Falls nicht, hat SF den Button geändert |
-| Farbpalette geht nicht auf | Konsole auf Fehler prüfen. Ggf. Tampermonkey-Skript neu installieren |
+| Skript lädt nicht | Browser neu laden (F5). Tampermonkey-Icon prüfen ob Skript aktiv |
+| Button nicht sichtbar | Skript ist nur auf Case-Listen und WorkOrder-Seiten aktiv |
+| Snippet-Dropdown erscheint nicht | Prefix korrekt? Standard ist `;;`. In Einstellungen prüfen |
+| Anrede/Name leer | Feld muss im SF-Layout sichtbar sein. Seite neu laden und erneut versuchen |
+| Regeln verschwunden | localStorage gelöscht? → Export-Datei einspielen |
+| Auto-Refresh funktioniert nicht | F12-Konsole prüfen auf `[SFHL]`-Meldungen. SF könnte Button-Selektoren geändert haben |
 
-**Debug-Modus:** Öffne die Browser-Konsole (F12) — das Skript loggt alle wichtigen Schritte mit `[SFHL]` Prefix.
+**Debug:** Browser-Konsole (F12) öffnen — alle Skript-Meldungen erscheinen mit `[SFHL]`-Prefix.
+
+---
+
+## Entwicklung
+
+**Aktive URLs (`@match`):**
+- `https://endress.lightning.force.com/lightning/o/Case/list*`
+- `https://endress.lightning.force.com/lightning/r/WorkOrder*`
+
+**localStorage-Keys:**
+
+| Key | Inhalt |
+|---|---|
+| `sfhl_config_v4` | Regeln (Array, Reihenfolge = Priorität) |
+| `sfhl_snippets_v1` | Snippets (Array) |
+| `sfhl_rule_folders_v1` | Ordner (Array) |
+| `sfhl_refresh_secs_v1` | Refresh-Intervall in Sekunden |
+| `sfhl_refresh_enabled` | Refresh ein/aus |
+| `sfhl_panel_width` | Panel-Breite in Pixeln |
+| `sfhl_snip_prefix` | Snippet-Trigger-Prefix |
+| `sfhl_snip_username` | Benutzername für `{name}` |
+| `sfhl_default_language` | Standard-Snippetsprache (`de`/`en`) |
+| `sfhl_wrap_enabled` | Auto-Wrap ein/aus |
+| `sfhl_recent_v1` | Zuletzt verwendete Snippet-IDs |
+
+**Auto-Update (Tampermonkey):**
+```
+@downloadURL  https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.user.js
+@updateURL    https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.user.js
+```
 
 ---
 
 ## Lizenz
 
-MIT License — siehe [LICENSE.txt](LICENSE.txt)
+MIT License — Copyright (c) 2025–2026 Tobias Jurgan, Endress+Hauser (Deutschland) GmbH+Co. KG
+
+Vollständiger Lizenztext inkl. Datenschutz- und Markenrechtshinweisen: [LICENSE.txt](LICENSE.txt)
+
+> **Hinweis:** „Salesforce" und „Salesforce Lightning" sind eingetragene Marken der Salesforce, Inc.
+> Dieses Projekt steht in keiner Verbindung zu Salesforce, Inc.
