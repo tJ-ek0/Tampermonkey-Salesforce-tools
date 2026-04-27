@@ -405,66 +405,85 @@
   }
 
 
+  // Liest ALL Text aus einem Element inkl. aller verschachtelten Shadow Roots.
+  // Nötig für SF Lightning Picklist/Lookup-Felder (lightning-formatted-picklist etc.)
+  function getDeepText(el) {
+    if (!el) return '';
+    let out = '';
+    (function walk(n) {
+      if (!n) return;
+      if (n.nodeType === 3) { out += n.textContent; return; }
+      if (n.nodeType !== 1) return;
+      Array.from(n.childNodes || []).forEach(walk);
+      if (n.shadowRoot) Array.from(n.shadowRoot.childNodes || []).forEach(walk);
+    })(el);
+    return out.replace(/\s+/g, ' ').trim();
+  }
+
   function readSFField(labelTexts) {
-    // Label-basiert, durchsucht Shadow DOM. Drei Pass-Stufen: exact, startsWith, contains
     try {
-      const containers = deepQueryAll(document, '.slds-form-element, force-record-layout-item, records-record-layout-item');
       const lowLabels = labelTexts.map(l => l.toLowerCase());
+      // Erweiterte Container-Suche: auch Highlights-Panel und lightning-output-field
+      const CTR_SEL  = '.slds-form-element,force-record-layout-item,records-record-layout-item,lightning-output-field,force-highlights-details-item';
+      // Erweiterte Value-Suche: Picklist + Lookup explizit
+      const VAL_SEL  = 'lightning-formatted-text,lightning-formatted-name,lightning-formatted-picklist,lightning-formatted-lookup,.slds-form-element__static,dd,p,a.textUnderline,a[data-recordid],a[href*="/r/"]';
+      const LBL_SEL  = '.slds-form-element__label,dt,label,span.label,abbr,.slds-text-title';
+
+      const containers = deepQueryAll(document, CTR_SEL);
       const candidates = [];
+
       for (const ctr of containers) {
         const lbl = ctr.shadowRoot
-          ? deepQuery(ctr.shadowRoot, '.slds-form-element__label, dt, label, span.label')
-          : ctr.querySelector('.slds-form-element__label, dt, label, span.label');
+          ? deepQuery(ctr.shadowRoot, LBL_SEL)
+          : ctr.querySelector(LBL_SEL);
         if (!lbl) continue;
-        const t = (lbl.innerText || lbl.textContent || '').trim().toLowerCase();
+        const t = (lbl.textContent || '').trim().toLowerCase();
         if (!t) continue;
         let rank = 0;
         if (lowLabels.includes(t)) rank = 3;
         else if (lowLabels.some(l => t.startsWith(l))) rank = 2;
         else if (lowLabels.some(l => t.includes(l))) rank = 1;
         if (!rank) continue;
+
+        // 1. Versuch: spezifisches Value-Element finden
         const val = ctr.shadowRoot
-          ? deepQuery(ctr.shadowRoot, 'lightning-formatted-text,lightning-formatted-name,.slds-form-element__static,dd,p,a.textUnderline,a')
-          : ctr.querySelector('lightning-formatted-text,lightning-formatted-name,.slds-form-element__static,dd,p,a.textUnderline,a');
+          ? deepQuery(ctr.shadowRoot, VAL_SEL)
+          : ctr.querySelector(VAL_SEL);
         if (val) {
-          const v = (val.innerText || val.textContent || '').trim();
-          if (v && v !== t && v.length < 200) candidates.push({ rank, v });
+          // getDeepText traversiert auch shadow roots von lightning-formatted-picklist etc.
+          const v = getDeepText(val) || (val.textContent || '').trim();
+          if (v && v !== t && v.length < 200) { candidates.push({ rank, v }); continue; }
         }
+
+        // 2. Fallback: kompletten Container-Text holen, Label-Text abziehen
+        const full = getDeepText(ctr);
+        const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const stripped = full.replace(new RegExp('^\\s*' + escaped + '\\s*', 'i'), '').trim();
+        if (stripped && stripped.length < 200) candidates.push({ rank: rank - 0.5, v: stripped });
       }
+
       if (candidates.length) {
-        candidates.sort((a,b) => b.rank - a.rank);
+        candidates.sort((a, b) => b.rank - a.rank);
         return candidates[0].v;
       }
 
-      // Fallback: direkte Label-Suche (span/dt/label mit dem Text)
-      // Dann nächstes Sibling oder Parent-Sibling als Wert.
-      const allLabels = deepQueryAll(document, 'span, dt, label, .slds-form-element__label');
+      // Letzter Fallback: flache Label-Suche im gesamten DOM
+      const allLabels = deepQueryAll(document, 'span,dt,label,.slds-form-element__label,.slds-text-title');
       for (const lbl of allLabels) {
-        const t = (lbl.innerText || lbl.textContent || '').trim().toLowerCase();
+        const t = (lbl.textContent || '').trim().toLowerCase();
         if (!t || t.length > 50) continue;
         if (!lowLabels.some(l => t === l || t.startsWith(l))) continue;
-        // Wert: Parent → nächstes Sibling → erster lightning-formatted-text im Parent
-        let valEl = null;
         const parent = lbl.parentElement;
-        if (parent) {
-          // Nächstes Sibling auf gleicher Ebene
-          let sib = lbl.nextElementSibling;
-          while (sib && !valEl) {
-            const vt = (sib.innerText || sib.textContent || '').trim();
-            if (vt && vt !== t && vt.length < 200) { valEl = sib; break; }
-            sib = sib.nextElementSibling;
-          }
-          // Fallback: erstes Value-Element im Parent
-          if (!valEl) {
-            valEl = parent.querySelector('lightning-formatted-text,lightning-formatted-name,.slds-form-element__static,dd,a.textUnderline,a');
-          }
-          // Fallback: Parent's Parent nach Value durchsuchen
-          if (!valEl && parent.parentElement) {
-            valEl = parent.parentElement.querySelector('lightning-formatted-text,lightning-formatted-name,.slds-form-element__static,dd,a.textUnderline');
-          }
+        if (!parent) continue;
+        let sib = lbl.nextElementSibling;
+        while (sib) {
+          const vt = getDeepText(sib);
+          if (vt && vt !== t && vt.length < 200) return vt;
+          sib = sib.nextElementSibling;
         }
+        const valEl = parent.querySelector('lightning-formatted-text,lightning-formatted-name,lightning-formatted-picklist,.slds-form-element__static,dd,a.textUnderline');
         if (valEl) {
-          const v = (valEl.innerText || valEl.textContent || '').trim();
+          const v = getDeepText(valEl);
           if (v && v !== t && v.length < 200) return v;
         }
       }
@@ -497,28 +516,50 @@
   // Kontaktname: sucht in Highlight-Feldern und im Detail-Layout
   function readContactName() {
     try {
-      // 1. Label "Name" mit Wert im Detail-Bereich — oft leer weil Lookup
-      // Stattdessen: Lookup-Link neben "Name"-Label suchen
-      const containers = deepQueryAll(document, '.slds-form-element, force-record-layout-item, records-record-layout-item');
+      // 1. Zuverlässigste Methode: Contact-Link direkt aus Lookup-Feldern
+      //    SF rendert Lookup-Werte als <a href="/lightning/r/Contact/...">
+      const contactLinks = deepQueryAll(document, 'a[href*="/lightning/r/Contact/"], a[href*="/r/Contact/"]');
+      for (const a of contactLinks) {
+        const v = (a.textContent || '').trim();
+        if (v && v.length > 1 && v.length < 100) return v;
+      }
+
+      // 2. Highlights-Panel: force-highlights-details-item mit Kontakt-Label
+      const highlights = deepQueryAll(document, 'force-highlights-details-item');
+      for (const item of highlights) {
+        const labelEl = deepQuery(item.shadowRoot || item, '.slds-text-title, .slds-form-element__label, dt, label, p');
+        if (!labelEl) continue;
+        const lt = (labelEl.textContent || '').trim().toLowerCase();
+        if (!['kontaktname','kontakt','contact name','contact','name'].includes(lt)) continue;
+        const v = getDeepText(item).replace(new RegExp('^' + lt, 'i'), '').trim();
+        if (v && v.length > 1 && v.length < 100) return v;
+      }
+
+      // 3. Form-Felder mit Kontakt-Label (getDeepText für Shadow-DOM Lookup-Werte)
+      const containers = deepQueryAll(document, '.slds-form-element,force-record-layout-item,records-record-layout-item,lightning-output-field');
       for (const ctr of containers) {
         const lbl = ctr.shadowRoot
-          ? deepQuery(ctr.shadowRoot, '.slds-form-element__label, dt, label, span.label')
-          : ctr.querySelector('.slds-form-element__label, dt, label, span.label');
+          ? deepQuery(ctr.shadowRoot, '.slds-form-element__label,dt,label,span.label')
+          : ctr.querySelector('.slds-form-element__label,dt,label,span.label');
         if (!lbl) continue;
         const lt = (lbl.textContent || '').trim().toLowerCase();
-        if (lt !== 'name' && lt !== 'kontaktname' && lt !== 'contact name' && lt !== 'kontakt') continue;
-        // Wert: auch Links durchsuchen (SF rendert Lookup-Felder als <a>)
-        const valEl = ctr.shadowRoot
-          ? deepQuery(ctr.shadowRoot, 'a, lightning-formatted-text, .slds-form-element__static, dd, p, force-lookup, lightning-formatted-name')
-          : ctr.querySelector('a, lightning-formatted-text, .slds-form-element__static, dd, p, force-lookup, lightning-formatted-name');
-        if (valEl) {
-          const v = (valEl.textContent || '').trim();
-          if (v && v.length > 1 && v.length < 100 && v !== lt) return v;
+        if (!['kontaktname','kontakt','contact name','contact name','name'].includes(lt)) continue;
+        // Lookup-Link suchen
+        const link = ctr.shadowRoot
+          ? deepQuery(ctr.shadowRoot, 'a[href*="/r/Contact/"], a[href*="/Contact/"], force-lookup a, lightning-formatted-lookup a')
+          : ctr.querySelector('a[href*="/r/Contact/"], a[href*="/Contact/"], force-lookup a, lightning-formatted-lookup a');
+        if (link) {
+          const v = (link.textContent || '').trim();
+          if (v && v.length > 1 && v.length < 100) return v;
         }
+        // Fallback: getDeepText auf gesamten Container, Label abziehen
+        const full = getDeepText(ctr);
+        const stripped = full.replace(new RegExp('^\\s*' + lt + '\\s*', 'i'), '').trim();
+        if (stripped && stripped.length > 1 && stripped.length < 100) return stripped;
       }
-      // 2. Standard readSFField
-      const byLabel = readSFField(['kontaktname','kontakt','contact name','contact','name']);
-      if (byLabel) return byLabel;
+
+      // 4. readSFField als letzter Fallback
+      return readSFField(['kontaktname','kontakt','contact name','contact','name']);
     } catch {}
     return '';
   }
