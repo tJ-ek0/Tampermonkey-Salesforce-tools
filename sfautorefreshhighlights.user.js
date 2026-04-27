@@ -19,7 +19,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '5.1.0';
+  const VERSION = '4.0.0';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -2292,7 +2292,8 @@
       const bodyToShow = (activeLang === 'en' && s.bodyEn) ? s.bodyEn : s.body;
       const preview = htmlToPlain(bodyToShow).replace(/\n/g,' ').slice(0,70);
       const favBadge = s.favorite ? '<span style="color:#f59e0b;margin-left:2px">\u2605</span>' : '';
-      const langBadge = s.bodyEn ? `<span style="font-size:9px;background:${activeLang==='en'?'#dbeafe':'#f3f4f6'};color:${activeLang==='en'?'#1d4ed8':'#6b7280'};padding:0 4px;border-radius:3px;margin-left:4px">${activeLang.toUpperCase()}</span>` : '';
+      const safeLang = escH((['de','en'].includes(activeLang) ? activeLang : 'de').toUpperCase());
+      const langBadge = s.bodyEn ? `<span style="font-size:9px;background:${activeLang==='en'?'#dbeafe':'#f3f4f6'};color:${activeLang==='en'?'#1d4ed8':'#6b7280'};padding:0 4px;border-radius:3px;margin-left:4px">${safeLang}</span>` : '';
       return `<div class="sfhl-dd-item${i===0?' selected':''}" data-snip-id="${s.id}"><div class="sfhl-dd-item-top"><span class="sfhl-dd-trigger">${escH(prefix+s.trigger)}</span><span class="sfhl-dd-label">${escH(s.label)}${favBadge}${langBadge}</span><span class="sfhl-dd-cat">${escH(s.category)}</span></div><div class="sfhl-dd-preview">${escH(preview)}${preview.length>=70?'\u2026':''}</div></div>`;
     }).join('') + `<div class="sfhl-dd-hint"><span>${loadWrapOn()?'<span style="color:#10b981;font-weight:600">\u2713 Anrede+Signatur</span> \u2022 ':''}Enter = einf\u00fcgen \u2022 \u2191\u2193 = navigieren \u2022 Esc = schlie\u00dfen</span></div>`;
 
@@ -2577,8 +2578,6 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   });
   _iframeObserver.observe(document.documentElement, { childList: true, subtree: true });
   // TinyMCE + generelle Editor-Erkennung (Polling als Fallback)
-  setInterval(() => { tryAttachTinyMCE(); periodicScan(); }, 3000);
-
   // ===== Highlighting =====
   const ROW_STRATEGIES = [
     {name:'css:lst-common',type:'css',sel:'lst-common-list-internal table tbody tr'},
@@ -2609,6 +2608,7 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     return null;
   }
   // ===== Advanced Rule Matching (UND/NICHT/Regex) =====
+  const _regexCache = new Map();
   function matchesSingleCondition(lowTxt, cond) {
     cond = cond.trim();
     if (!cond) return true;
@@ -2618,8 +2618,13 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     let result;
     const rxMatch = cond.match(/^\/(.+)\/([gimsuy]*)$/);
     if (rxMatch) {
-      try { result = new RegExp(rxMatch[1], rxMatch[2]).test(lowTxt); }
-      catch { result = lowTxt.includes(norm(cond)); }
+      const key = rxMatch[1] + '/' + rxMatch[2];
+      if (!_regexCache.has(key)) {
+        try { _regexCache.set(key, new RegExp(rxMatch[1], rxMatch[2])); }
+        catch { _regexCache.set(key, null); }
+      }
+      const rx = _regexCache.get(key);
+      result = rx ? rx.test(lowTxt) : lowTxt.includes(norm(cond));
     } else {
       result = lowTxt.includes(norm(cond));
     }
@@ -2667,7 +2672,7 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   const rescanSoon = debounce((full=false) => { if(isCaseListPage()) highlightRows(full); }, 80);
   (function kick(){let tries=0;const k=setInterval(()=>{if(!isCaseListPage()){clearInterval(k);return;}if(highlightRows())clearInterval(k);if(++tries>120)clearInterval(k);},200);})();
   if(document.body){const obs=new MutationObserver(muts=>{for(const mu of muts){if(mu.addedNodes?.length){for(const n of mu.addedNodes){if(n instanceof Element&&(n.matches?.('tr,table')||n.querySelector?.('tr,table'))){rescanSoon(false);return;}}}if(mu.type==='characterData'){rescanSoon(false);return;}}});obs.observe(document.body,{childList:true,subtree:true,characterData:true});}
-  setInterval(()=>{if(isCaseListPage())highlightRows();},5000);
+  setInterval(() => { tryAttachTinyMCE(); periodicScan(); if (isCaseListPage()) highlightRows(); }, 5000);
 
   console.log('[SFHL] Init complete');
 })();
