@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.0.4
+// @version      4.0.5
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.0.4';
+  const VERSION = '4.0.5';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -696,6 +696,7 @@
     .sfhl-ib{width:30px;height:30px;border-radius:6px;background:transparent;cursor:pointer;color:#6b7280;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s;position:relative}
     .sfhl-ib:hover{background:#f3f4f6;color:#111} .sfhl-ib svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
     .sfhl-ib.sfhl-help-btn.active{background:#eef2ff;color:#6366f1}
+    .sfhl-ib.sfhl-settings-btn.active{background:#f5f3ff;color:#7c3aed}
     .sfhl-tabs{display:flex;gap:0;margin:0 -16px;padding:0 16px}
     .sfhl-tab{padding:8px 16px;font-size:12.5px;font-weight:500;color:#9ca3af;cursor:pointer;border-bottom:2px solid transparent;transition:color .12s,border-color .12s;white-space:nowrap}
     .sfhl-tab:hover{color:#374151} .sfhl-tab.active{color:#4f46e5;border-bottom-color:#4f46e5}
@@ -993,6 +994,9 @@
       <div class="sfhl-hdr-top">
         <h2>Salesforce Tools</h2>
         <div class="sfhl-hdr-acts">
+          <div class="sfhl-ib sfhl-settings-btn" role="button" tabindex="0" title="Einstellungen">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </div>
           <div class="sfhl-ib sfhl-help-btn" role="button" tabindex="0" title="Hilfe">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </div>
@@ -1005,7 +1009,6 @@
         <div class="sfhl-tab active" data-tab="rules"><span data-i18n="Markierung">Markierung</span> <span class="sfhl-tab-badge sfhl-rules-count">0</span></div>
         <div class="sfhl-tab" data-tab="snippets"><span data-i18n="Snippets">Snippets</span> <span class="sfhl-tab-badge sfhl-snip-count">0</span></div>
         <div class="sfhl-tab" data-tab="refresh" data-i18n="Aktualisierung">Aktualisierung</div>
-        <div class="sfhl-tab" data-tab="settings" data-i18n="Einstellungen">Einstellungen</div>
       </div>
     </div>
 
@@ -1351,11 +1354,16 @@
     panel.querySelectorAll('.sfhl-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
     panel.querySelectorAll('.sfhl-tab-content').forEach(c => c.classList.toggle('active', c.dataset.tab === tabName));
     $('.sfhl-help-btn').classList.toggle('active', tabName === 'help');
+    $('.sfhl-settings-btn').classList.toggle('active', tabName === 'settings');
     snipEditor.classList.remove('vis');
     panel.querySelectorAll('.sfhl-add-bar').forEach(b => b.style.display = 'flex');
     addForm.classList.remove('vis');
   }
   panel.querySelectorAll('.sfhl-tab').forEach(tab => { tab.onclick = () => switchTab(tab.dataset.tab); });
+  $('.sfhl-settings-btn').onclick = () => {
+    const isSettings = $('.sfhl-tab-content[data-tab="settings"]').classList.contains('active');
+    switchTab(isSettings ? 'rules' : 'settings');
+  };
   $('.sfhl-help-btn').onclick = () => {
     const isHelp = $('.sfhl-tab-content[data-tab="help"]').classList.contains('active');
     switchTab(isHelp ? 'rules' : 'help');
