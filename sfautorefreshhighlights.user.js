@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.0.5
+// @version      4.0.6
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.0.5';
+  const VERSION = '4.0.6';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -724,7 +724,7 @@
     .sfhl-colhdr{display:grid;grid-template-columns:20px minmax(0,1fr) 28px auto;gap:4px;padding:6px 16px;font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #f3f4f6;flex-shrink:0}
     .sfhl-list{flex:1;overflow-y:auto;overflow-x:hidden;padding:2px 0;min-height:0}
     .sfhl-list::-webkit-scrollbar{width:4px} .sfhl-list::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:4px}
-    .sfhl-row{display:grid;grid-template-columns:20px minmax(0,1fr) 28px auto;gap:4px;padding:5px 16px;align-items:center;transition:background .12s;cursor:grab;border-left:3px solid transparent}
+    .sfhl-row{display:grid;grid-template-columns:20px 22px minmax(0,1fr) 28px auto;gap:4px;padding:5px 16px;align-items:center;transition:background .12s;cursor:grab;border-left:3px solid transparent}
     .sfhl-row:hover{background:#f9fafb} .sfhl-row.disabled{opacity:.45} .sfhl-row.disabled .sfhl-r-term{text-decoration:line-through;color:#9ca3af}
     .sfhl-row.dragging{opacity:.3;background:#eef2ff} .sfhl-row.drag-over-top{border-top:2px solid #6366f1} .sfhl-row.drag-over-bot{border-bottom:2px solid #6366f1}
     .sfhl-grip{color:#d1d5db;cursor:grab;display:flex;align-items:center;justify-content:center}
@@ -911,6 +911,29 @@
     .sfhl-snip-prev-body i,.sfhl-snip-prev-body em{font-style:italic}
     .sfhl-snip-prev-body ul,.sfhl-snip-prev-body ol{padding-left:16px;margin:2px 0}
     .sfhl-snip-prev-body a{color:#6366f1;text-decoration:underline}
+    /* Empty states */
+    .sfhl-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 16px;gap:7px;color:#9ca3af}
+    .sfhl-empty svg{width:38px;height:38px;stroke:#d1d5db;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+    .sfhl-empty-title{font-size:13px;font-weight:600;color:#6b7280;margin:0}
+    .sfhl-empty-sub{font-size:11.5px;text-align:center;line-height:1.5;max-width:210px;margin:0}
+    /* Priority badge */
+    .sfhl-rule-prio{min-width:20px;height:20px;border-radius:4px;background:#f3f4f6;color:#b0b7c3;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:monospace}
+    .sfhl-row:not(.disabled) .sfhl-rule-prio.has-prio{background:#eef2ff;color:#6366f1}
+    /* Category chips */
+    .sfhl-cat-chips{display:flex;flex-wrap:wrap;gap:4px;padding:5px 12px 2px;flex-shrink:0;min-height:0}
+    .sfhl-cat-chips:empty{display:none}
+    .sfhl-cat-chip{padding:2px 9px;border-radius:99px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid #e5e7eb;background:#f9fafb;color:#6b7280;transition:all .12s;white-space:nowrap;user-select:none;line-height:1.7}
+    .sfhl-cat-chip:hover{border-color:#c4b5fd;color:#7c3aed}
+    .sfhl-cat-chip.active{background:#f5f3ff;border-color:#7c3aed;color:#7c3aed;font-weight:600}
+    /* RF countdown ring */
+    .sfhl-rf-ring-wrap{display:flex;flex-direction:column;align-items:center;padding:14px 0 8px;gap:5px}
+    .sfhl-rf-ring{position:relative;width:88px;height:88px;opacity:0;transition:opacity .4s}
+    .sfhl-rf-ring.vis{opacity:1}
+    .sfhl-rf-ring svg{width:88px;height:88px;transform:rotate(-90deg)}
+    .sfhl-rf-ring-bg{fill:none;stroke:#f3f4f6;stroke-width:7}
+    .sfhl-rf-ring-prog{fill:none;stroke:#6366f1;stroke-width:7;stroke-linecap:round;stroke-dasharray:263.9;stroke-dashoffset:0;transition:stroke-dashoffset .9s linear}
+    .sfhl-rf-ring-lbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;color:#374151}
+    .sfhl-rf-ring-status{font-size:11px;color:#9ca3af;font-weight:500}
     .sfhl-set-row2{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12.5px;color:#374151}
     .sfhl-set-row2 label{min-width:80px;font-size:12px;color:#6b7280;flex-shrink:0}
     .sfhl-set-row2 input[type="text"],.sfhl-set-row2 select{flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12.5px}
@@ -1043,6 +1066,7 @@
     <!-- ===== Snippets Tab ===== -->
     <div class="sfhl-tab-content" data-tab="snippets">
       <div class="sfhl-search"><input type="text" placeholder="Snippets durchsuchen\u2026" class="sfhl-snip-search-input"></div>
+      <div class="sfhl-cat-chips"></div>
       <div class="sfhl-snip-list"></div>
       <div class="sfhl-add-bar"><div class="sfhl-add-toggle sfhl-snip-add-toggle" role="button"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Neues Snippet</div></div>
       <div class="sfhl-snip-editor" data-mode="add">
@@ -1097,6 +1121,13 @@
           <div class="sfhl-btn-sm sfhl-btn-primary sfhl-rf-apply" role="button" style="margin-top:6px">\u00dcbernehmen</div>
         </div>
         <p style="font-size:11px;color:#9ca3af;padding:0 2px">Der Auto-Refresh ist nur auf Case-Listenseiten aktiv. Der Countdown wird direkt im SF-Refresh-Button angezeigt.</p>
+        <div class="sfhl-rf-ring-wrap">
+          <div class="sfhl-rf-ring">
+            <svg viewBox="0 0 100 100"><circle class="sfhl-rf-ring-bg" cx="50" cy="50" r="42"/><circle class="sfhl-rf-ring-prog" cx="50" cy="50" r="42"/></svg>
+            <span class="sfhl-rf-ring-lbl">–</span>
+          </div>
+          <span class="sfhl-rf-ring-status"></span>
+        </div>
       </div>
     </div>
 
@@ -1314,6 +1345,7 @@
   const $ = s => panel.querySelector(s);
   const listEl      = $('.sfhl-list');
   const snipListEl  = $('.sfhl-snip-list');
+  const catChipsEl  = $('.sfhl-cat-chips');
   const searchInput = $('.sfhl-search-input');
   const snipSearch  = $('.sfhl-snip-search-input');
   const addForm     = $('.sfhl-add-form');
@@ -1565,7 +1597,12 @@
     const eye = item.enabled
       ? '<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
       : '<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
-    row.innerHTML = `<div class="sfhl-grip"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/></svg></div><input type="text" value="${escH(item.term)}" title="${escH(item.term)}" class="sfhl-r-term"><div class="sfhl-sw" data-color="${item.color}"><div class="sfhl-sw-fill" style="background:${item.color}"></div><input type="color" value="${item.color}" class="sfhl-r-color"></div><div class="sfhl-row-acts"><div class="sfhl-ra ${item.enabled?'toggle-on':'toggle-off'} sfhl-toggle-rule" role="button" title="${item.enabled?'Deaktivieren':'Aktivieren'}">${eye}${item.enabled?'An':'Aus'}</div><div class="sfhl-ra del sfhl-del-rule" role="button" title="L\u00f6schen"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div></div>`;
+    const enabledWithTerm = RULES.filter(r => r.enabled && r.term);
+    const prio = (item.enabled && item.term) ? enabledWithTerm.indexOf(item) + 1 : 0;
+    const prioBadge = prio > 0
+      ? `<div class="sfhl-rule-prio has-prio" title="Priorit\u00e4t ${prio}">#${prio}</div>`
+      : `<div class="sfhl-rule-prio" title="Inaktiv">\u2013</div>`;
+    row.innerHTML = `<div class="sfhl-grip"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/></svg></div>${prioBadge}<input type="text" value="${escH(item.term)}" title="${escH(item.term)}" class="sfhl-r-term"><div class="sfhl-sw" data-color="${item.color}"><div class="sfhl-sw-fill" style="background:${item.color}"></div><input type="color" value="${item.color}" class="sfhl-r-color"></div><div class="sfhl-row-acts"><div class="sfhl-ra ${item.enabled?'toggle-on':'toggle-off'} sfhl-toggle-rule" role="button" title="${item.enabled?'Deaktivieren':'Aktivieren'}">${eye}${item.enabled?'An':'Aus'}</div><div class="sfhl-ra del sfhl-del-rule" role="button" title="L\u00f6schen"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div></div>`;
     return row;
   }
 
@@ -1573,6 +1610,14 @@
   function renderRules() {
     listEl.innerHTML = '';
     const filtered = ruleSearch ? RULES.filter(r => norm(r.term).includes(ruleSearch)) : RULES;
+    if (RULES.length === 0) {
+      listEl.innerHTML = `<div class="sfhl-empty"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p class="sfhl-empty-title">Noch keine Regeln</p><p class="sfhl-empty-sub">Erstelle eine Regel um Zeilen in Case-Listen farbig hervorzuheben.</p></div>`;
+      updateBadges(); return;
+    }
+    if (ruleSearch && filtered.length === 0) {
+      listEl.innerHTML = `<div class="sfhl-empty"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><p class="sfhl-empty-title">Keine Treffer</p><p class="sfhl-empty-sub">Kein Begriff passt zu „${escH(ruleSearch)}".</p></div>`;
+      updateBadges(); return;
+    }
     const ungrouped = filtered.filter(r => !r.folder);
 
     // Ungrouped section header (only when folders exist)
@@ -1688,17 +1733,39 @@
   };
 
   // ===== Snippets Tab =====
-  let snipSearchTerm = '', editingSnipId = null;
+  let snipSearchTerm = '', editingSnipId = null, activeCatFilter = null;
   snipSearch.addEventListener('input', () => { snipSearchTerm = snipSearch.value.toLowerCase().trim(); renderSnippets(); });
+  catChipsEl.addEventListener('click', e => {
+    const chip = e.target.closest('.sfhl-cat-chip'); if (!chip) return;
+    activeCatFilter = chip.dataset.cat || null;
+    renderSnippets();
+  });
+
+  function renderCatChips() {
+    if (!catChipsEl) return;
+    const cats = [...new Set(SNIPPETS.map(s => s.category || '(Keine Kategorie)'))].sort((a,b) => {
+      if (a === '(Keine Kategorie)') return 1; if (b === '(Keine Kategorie)') return -1;
+      return a.localeCompare(b, 'de');
+    });
+    if (cats.length <= 1) { catChipsEl.innerHTML = ''; return; }
+    catChipsEl.innerHTML = `<span class="sfhl-cat-chip${!activeCatFilter?' active':''}" data-cat="">Alle</span>` +
+      cats.map(c => `<span class="sfhl-cat-chip${activeCatFilter===c?' active':''}" data-cat="${escH(c)}">${escH(c)}</span>`).join('');
+  }
 
   function renderSnippets() {
+    renderCatChips();
     // DocumentFragment für bessere Performance (#24)
     const frag = document.createDocumentFragment();
     const prefix = loadPrefix();
+    if (SNIPPETS.length === 0) {
+      snipListEl.innerHTML = `<div class="sfhl-empty"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><p class="sfhl-empty-title">Noch keine Snippets</p><p class="sfhl-empty-sub">Erstelle einen Textbaustein und füge ihn überall per Prefix ein.</p></div>`;
+      updateBadges(); updateCatDatalist(); return;
+    }
     // Suche auch nach Kategorie (#12)
-    const filtered = snipSearchTerm
+    let filtered = snipSearchTerm
       ? SNIPPETS.filter(s => norm(s.trigger).includes(snipSearchTerm) || norm(s.label).includes(snipSearchTerm) || norm(s.category).includes(snipSearchTerm) || norm(s.body).includes(snipSearchTerm))
       : SNIPPETS;
+    if (activeCatFilter) filtered = filtered.filter(s => (s.category || '(Keine Kategorie)') === activeCatFilter);
 
     // Recently Used (#15)
     const recentIds = loadRecent().filter(id => SNIPPETS.some(s => s.id === id));
@@ -2892,9 +2959,27 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   document.addEventListener('mousedown', () => { _lastActivity = Date.now(); }, { passive: true, capture: true });
   function clearCd(){if(cdId){clearInterval(cdId);cdId=null;}} function clearRf(){if(rfId){clearInterval(rfId);rfId=null;}}
   function setLbl(b,s){if(b){b.innerText=String(s);b.title=`Refresh in ${s}s`;}} function clrLbl(){const b=getRefreshButton();if(b){b.innerText='';b.title='Auto-Refresh aus';}}
-  function startCd(secs){const b=getRefreshButton();if(!b)return;clearCd();nextAt=Date.now()+secs*1000;setLbl(b,secs);cdId=setInterval(()=>{const rem=Math.max(0,nextAt-Date.now());setLbl(getRefreshButton(),Math.ceil(rem/1000));if(rem<=0)clearCd();},1000);}
+  function updateRfRing() {
+    const ringEl = panel.querySelector('.sfhl-rf-ring');
+    const statusEl = panel.querySelector('.sfhl-rf-ring-status');
+    const lblEl = panel.querySelector('.sfhl-rf-ring-lbl');
+    const progEl = panel.querySelector('.sfhl-rf-ring-prog');
+    if (!ringEl) return;
+    if (!nextAt || !loadRefreshOn()) {
+      ringEl.classList.remove('vis');
+      if (statusEl) statusEl.textContent = loadRefreshOn() ? 'Warte auf Seite…' : 'Refresh deaktiviert';
+      return;
+    }
+    const total = loadRefreshSecs();
+    const rem = Math.max(0, Math.ceil((nextAt - Date.now()) / 1000));
+    if (progEl) progEl.style.strokeDashoffset = String(263.9 * (1 - rem / total));
+    if (lblEl) lblEl.textContent = rem + 's';
+    if (statusEl) statusEl.textContent = isCaseListPage() ? 'Nächster Refresh in…' : 'Nicht auf Case-Seite';
+    ringEl.classList.add('vis');
+  }
+  function startCd(secs){const b=getRefreshButton();if(!b)return;clearCd();nextAt=Date.now()+secs*1000;setLbl(b,secs);updateRfRing();cdId=setInterval(()=>{const rem=Math.max(0,nextAt-Date.now());setLbl(getRefreshButton(),Math.ceil(rem/1000));updateRfRing();if(rem<=0)clearCd();},1000);}
   function startLoop(){const secs=loadRefreshSecs();if(!loadRefreshOn()){stopRefresh();return;}clearRf();clearCd();startCd(secs);rfId=setInterval(()=>{const b=getRefreshButton();if(!b){waitBtn(startLoop);clearRf();clearCd();return;}if(Date.now()-_lastActivity<5000){startCd(secs);return;}const snap=snapshotMarked();b.click();setTimeout(()=>highlightAndBlink(snap),1500);startCd(secs);},secs*1000);}
-  function stopRefresh(){clearRf();clearCd();clrLbl();}
+  function stopRefresh(){clearRf();clearCd();clrLbl();updateRfRing();}
   function restartRefresh(){if(loadRefreshOn()&&isCaseListPage())waitBtn(startLoop);else stopRefresh();}
   function waitBtn(cb){if(getRefreshButton()){cb?.();return;}if(rfObs){rfObs.disconnect();rfObs=null;}if(plId){clearInterval(plId);plId=null;}rfObs=new MutationObserver(()=>{if(getRefreshButton()){rfObs.disconnect();rfObs=null;if(plId){clearInterval(plId);plId=null;}cb?.();}});rfObs.observe(document.documentElement,{childList:true,subtree:true});plId=setInterval(()=>{if(getRefreshButton()){if(rfObs){rfObs.disconnect();rfObs=null;}clearInterval(plId);plId=null;cb?.();}},1000);}
   window.addEventListener('load', () => setTimeout(restartRefresh, 800));
