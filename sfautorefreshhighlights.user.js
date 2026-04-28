@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.0.1
+// @version      4.0.2
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.0.1';
+  const VERSION = '4.0.2';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -867,6 +867,27 @@
     .sfhl-set-section{margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #f3f4f6}
     .sfhl-set-section:last-child{border-bottom:none;margin-bottom:0}
     .sfhl-set-section h3{font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px}
+    /* Help accordion */
+    .sfhl-help-acc{display:flex;flex-direction:column;gap:5px;padding:10px 14px 14px}
+    .sfhl-help-sec{border:1px solid #e5e7eb;border-radius:8px;overflow:hidden}
+    .sfhl-help-hdr{display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer;user-select:none;background:#f9fafb;transition:background .15s}
+    .sfhl-help-hdr:hover{background:#f3f4f6}
+    .sfhl-help-sec.sfhl-open>.sfhl-help-hdr{background:#eef2ff}
+    .sfhl-help-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+    .sfhl-help-lbl{font-size:12.5px;font-weight:600;color:#374151;flex:1}
+    .sfhl-help-chv{width:12px;height:12px;stroke:#9ca3af;fill:none;stroke-width:2;stroke-linecap:round;flex-shrink:0;transition:transform .2s}
+    .sfhl-help-sec.sfhl-open>.sfhl-help-hdr>.sfhl-help-chv{transform:rotate(180deg)}
+    .sfhl-help-bdy{max-height:0;overflow:hidden;transition:max-height .28s ease}
+    .sfhl-help-sec.sfhl-open>.sfhl-help-bdy{max-height:1200px}
+    .sfhl-help-inn{padding:10px 14px 12px;font-size:12px;line-height:1.6;color:#374151;border-top:1px solid #f3f4f6}
+    .sfhl-help-inn p{margin:0 0 7px}.sfhl-help-inn p:last-child{margin-bottom:0}
+    .sfhl-help-inn ul{margin:3px 0 7px 16px;padding:0}.sfhl-help-inn li{margin-bottom:2px}
+    .sfhl-help-inn code{background:#f3f4f6;border-radius:3px;padding:1px 4px;font-size:11px;font-family:monospace;color:#6366f1}
+    .sfhl-help-tbl{width:100%;border-collapse:collapse;font-size:11.5px;margin:5px 0 6px}
+    .sfhl-help-tbl th{text-align:left;padding:4px 7px;font-weight:600;color:#6b7280;background:#f9fafb;border-bottom:1px solid #e5e7eb;font-size:11px}
+    .sfhl-help-tbl td{padding:4px 7px;border-bottom:1px solid #f9fafb;vertical-align:top}
+    .sfhl-help-tbl tr:last-child td{border-bottom:none}
+    .sfhl-help-tbl td:first-child{white-space:nowrap;color:#4b5563}
     .sfhl-set-row2{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12.5px;color:#374151}
     .sfhl-set-row2 label{min-width:80px;font-size:12px;color:#6b7280;flex-shrink:0}
     .sfhl-set-row2 input[type="text"],.sfhl-set-row2 select{flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12.5px}
@@ -1087,82 +1108,139 @@
 
     <!-- ===== Hilfe Tab ===== -->
     <div class="sfhl-tab-content" data-tab="help">
-      <div class="sfhl-settings-body" style="font-size:12px;line-height:1.55;color:#374151">
-        <div class="sfhl-set-section">
-          <h3>\u00dcberblick</h3>
-          <p>Dieses Tool erweitert Salesforce Lightning um drei Hauptfunktionen: <b>Zeilen-Markierung</b> in Case-Listen, <b>Text-Snippets</b> mit Platzhaltern und <b>Auto-Refresh</b> mit Countdown. Der SF-Tools-Button unten rechts \u00f6ffnet dieses Panel (Shortcut: <code>Alt+R</code>).</p>
-        </div>
+      <div class="sfhl-settings-body" style="padding:0">
+        <div class="sfhl-help-acc">
 
-        <div class="sfhl-set-section">
-          <h3>Markierung (Regeln)</h3>
-          <p>Markiert Zeilen in Case-Listen farbig basierend auf Textinhalten. Die Regeln werden in der Reihenfolge gepr\u00fcft, die erste passende Regel gewinnt.</p>
-          <p><b>Operatoren im Stichwort-Feld:</b></p>
-          <ul style="margin:4px 0 4px 18px;padding:0">
-            <li><code>Begriff</code> \u2014 einfache Textsuche (case-insensitive)</li>
-            <li><code>A + B</code> \u2014 UND: beide m\u00fcssen vorkommen</li>
-            <li><code>A | B</code> oder <code>A OR B</code> \u2014 ODER: mindestens einer</li>
-            <li><code>!text</code> \u2014 NICHT: darf nicht vorkommen</li>
-            <li><code>/regex/i</code> \u2014 Regul\u00e4rer Ausdruck</li>
-          </ul>
-          <p><b>Beispiele:</b><br>
-          <code>SLA + dringend</code> \u2014 SLA UND dringend<br>
-          <code>urgent | eilig</code> \u2014 urgent ODER eilig<br>
-          <code>SLA + !closed</code> \u2014 SLA aber NICHT closed<br>
-          <code>/Fehler\\s*\\d+/i</code> \u2014 "Fehler" gefolgt von Nummer</p>
-          <p><b>Ordner:</b> Regeln lassen sich in Ordnern gruppieren (Klick auf "Ordner"-Button). Ordner k\u00f6nnen auf-/zugeklappt werden.</p>
-        </div>
+          <div class="sfhl-help-sec sfhl-open">
+            <div class="sfhl-help-hdr">
+              <div class="sfhl-help-dot" style="background:#6366f1"></div>
+              <span class="sfhl-help-lbl">\u00dcberblick</span>
+              <svg class="sfhl-help-chv" viewBox="0 0 12 12"><polyline points="2,4 6,8 10,4"/></svg>
+            </div>
+            <div class="sfhl-help-bdy"><div class="sfhl-help-inn">
+              <p>Dieses Tool erweitert Salesforce Lightning um drei Hauptfunktionen: <b>Zeilen-Markierung</b> in Case-Listen, <b>Text-Snippets</b> mit Platzhaltern und <b>Auto-Refresh</b> mit Countdown.</p>
+              <p>Das Panel \u00f6ffnet sich mit dem <b>SF Tools</b>-Button unten rechts oder mit <code>Alt+R</code>. Die Breite l\u00e4sst sich am linken Rand per Drag &amp; Drop ver\u00e4ndern.</p>
+            </div></div>
+          </div>
 
-        <div class="sfhl-set-section">
-          <h3>Snippets</h3>
-          <p>Tippe den Trigger-Prefix (Standard <code>;;</code>) gefolgt vom Trigger-Namen in einem beliebigen Textfeld, um ein Snippet einzuf\u00fcgen. Das Dropdown \u00f6ffnet sich sofort bei <code>;;</code> und filtert beim Weitertippen.</p>
-          <p><b>Tastatur im Dropdown:</b></p>
-          <ul style="margin:4px 0 4px 18px;padding:0">
-            <li><code>\u2193 \u2191</code> \u2014 durch Vorschl\u00e4ge navigieren</li>
-            <li><code>Enter</code> oder <code>Tab</code> \u2014 ausgew\u00e4hltes Snippet einf\u00fcgen</li>
-            <li><code>Esc</code> \u2014 Dropdown schlie\u00dfen</li>
-          </ul>
-          <p><b>Sprachwahl beim Einf\u00fcgen:</b></p>
-          <ul style="margin:4px 0 4px 18px;padding:0">
-            <li><code>;;en gruss</code> \u2014 zeigt EN-Variante</li>
-            <li><code>;;de gruss</code> \u2014 zeigt DE-Variante</li>
-            <li>Ohne Pr\u00e4fix: Standard-Sprache aus Einstellungen</li>
-          </ul>
-          <p><b>Platzhalter</b> (per <code>{x}</code>-Button im Editor oder direkt tippen): <code>{name}</code> <code>{datum}</code> <code>{uhrzeit}</code> <code>{case}</code> <code>{betreff}</code> <code>{anrede}</code> <code>{nachname}</code> <code>{kontakt}</code> <code>{kunde}</code> <code>{produkt}</code> <code>{seriennummer}</code> <code>{telefon}</code> <code>{mobil}</code> <code>{arbeitsauftrag}</code> <code>{vertrieb}</code> <code>{firma}</code> <code>{|}</code> (Cursor-Position nach Einf\u00fcgen)</p>
-          <p><b>Dynamische Abfrage:</b> <code>{eingabe:Beschriftung}</code> fragt beim Einf\u00fcgen nach dem Wert.</p>
-          <p><b>Salesforce-Merge-Felder:</b> <code>{!Case.Subject}</code>, <code>{!Contact.Name}</code>, <code>{!Contact.Salutation}</code> etc. werden aus der aktuellen Case-Seite gelesen (DOM-basiert).</p>
-          <p><b>Auto-Wrap</b> (in Einstellungen): F\u00fcgt automatisch Anrede davor und Signatur danach ein. Wird \u00fcbersprungen wenn das Snippet selbst die Anrede/Signatur ist.</p>
-          <p><b>Weitere Features:</b> Favoriten (Stern), Nutzungs-Z\u00e4hler, Suche, Kategorien, Drag&Drop zum Umsortieren, Import/Export, Duplizieren, Teilen via Link.</p>
-        </div>
+          <div class="sfhl-help-sec">
+            <div class="sfhl-help-hdr">
+              <div class="sfhl-help-dot" style="background:#f59e0b"></div>
+              <span class="sfhl-help-lbl">Markierung (Regeln)</span>
+              <svg class="sfhl-help-chv" viewBox="0 0 12 12"><polyline points="2,4 6,8 10,4"/></svg>
+            </div>
+            <div class="sfhl-help-bdy"><div class="sfhl-help-inn">
+              <p>Markiert Zeilen in Case-Listen farbig. Regeln werden in der Reihenfolge gepr\u00fcft \u2014 die <b>erste passende Regel</b> gewinnt.</p>
+              <table class="sfhl-help-tbl">
+                <tr><th>Operator</th><th>Bedeutung</th><th>Beispiel</th></tr>
+                <tr><td><code>Begriff</code></td><td>Textsuche (case-insensitive)</td><td><code>dringend</code></td></tr>
+                <tr><td><code>A + B</code></td><td>UND: beide m\u00fcssen vorkommen</td><td><code>SLA + dringend</code></td></tr>
+                <tr><td><code>A | B</code></td><td>ODER: mindestens einer</td><td><code>urgent | eilig</code></td></tr>
+                <tr><td><code>!text</code></td><td>NICHT: darf nicht vorkommen</td><td><code>SLA + !closed</code></td></tr>
+                <tr><td><code>/regex/i</code></td><td>Regul\u00e4rer Ausdruck</td><td><code>/Fehler\s*\d+/i</code></td></tr>
+              </table>
+              <p><b>Ordner:</b> Regeln lassen sich in Ordnern gruppieren. \u201eOrdner\u201c-Button erstellt einen neuen Ordner, Regeln per Drag &amp; Drop hineinziehen.</p>
+            </div></div>
+          </div>
 
-        <div class="sfhl-set-section">
-          <h3>Aktualisierung (Auto-Refresh)</h3>
-          <p>Klickt automatisch den SF-Refresh-Button in Case-Listen in einem einstellbaren Intervall. Ein Countdown im Button zeigt die Sekunden bis zur n\u00e4chsten Aktualisierung. Neu hereingekommene Eintr\u00e4ge werden kurz blinkend hervorgehoben.</p>
-        </div>
+          <div class="sfhl-help-sec">
+            <div class="sfhl-help-hdr">
+              <div class="sfhl-help-dot" style="background:#10b981"></div>
+              <span class="sfhl-help-lbl">Snippets / Textbausteine</span>
+              <svg class="sfhl-help-chv" viewBox="0 0 12 12"><polyline points="2,4 6,8 10,4"/></svg>
+            </div>
+            <div class="sfhl-help-bdy"><div class="sfhl-help-inn">
+              <p>Tippe <code>;;</code> (oder deinen Trigger-Prefix) in ein beliebiges Textfeld. Das Dropdown \u00f6ffnet sich und filtert beim Weitertippen.</p>
+              <p><b>Navigation:</b> <code>\u2191\u2193</code> ausw\u00e4hlen &nbsp;&middot;&nbsp; <code>Enter</code>/<code>Tab</code> einf\u00fcgen &nbsp;&middot;&nbsp; <code>Esc</code> schlie\u00dfen</p>
+              <p><b>Sprache:</b> <code>;;en gruss</code> zeigt EN-Variante &nbsp;&middot;&nbsp; <code>;;de gruss</code> zeigt DE-Variante</p>
+              <p><b>Platzhalter:</b></p>
+              <table class="sfhl-help-tbl">
+                <tr><th>Platzhalter</th><th>Wert</th></tr>
+                <tr><td><code>{name}</code></td><td>Dein Name (aus Einstellungen)</td></tr>
+                <tr><td><code>{datum}</code> / <code>{uhrzeit}</code></td><td>Heutiges Datum / Uhrzeit</td></tr>
+                <tr><td><code>{case}</code></td><td>Vorgangsnummer</td></tr>
+                <tr><td><code>{anrede}</code> / <code>{nachname}</code></td><td>Anrede / Nachname des Kontakts</td></tr>
+                <tr><td><code>{firma}</code></td><td>Firmenname (Account)</td></tr>
+                <tr><td><code>{seriennummer}</code></td><td>Seriennummer aus dem Case</td></tr>
+                <tr><td><code>{|}</code></td><td>Cursor-Position nach Einf\u00fcgen</td></tr>
+                <tr><td><code>{eingabe:Text}</code></td><td>Fragt interaktiv nach dem Wert</td></tr>
+                <tr><td><code>{!Case.Subject}</code></td><td>SF Merge-Feld (DOM-basiert)</td></tr>
+              </table>
+              <p><b>Auto-Wrap</b> (in Einstellungen): F\u00fcgt automatisch Anrede und Signatur um jeden Textbaustein. Weitere Features: Favoriten, Kategorien, Nutzungsz\u00e4hler, Duplizieren, Teilen via Link.</p>
+            </div></div>
+          </div>
 
-        <div class="sfhl-set-section">
-          <h3>Einstellungen</h3>
-          <ul style="margin:4px 0 4px 18px;padding:0">
-            <li><b>Trigger-Prefix</b> \u2014 z.B. <code>;;</code>, <code>::</code>, <code>//</code></li>
-            <li><b>Dein Name</b> \u2014 wird f\u00fcr <code>{name}</code> verwendet</li>
-            <li><b>Default language</b> \u2014 welche Snippet-Variante standardm\u00e4\u00dfig verwendet wird</li>
-            <li><b>E-Mail Bausteine (Auto-Wrap)</b> \u2014 Anrede/Signatur automatisch</li>
-            <li><b>Export/Import</b> \u2014 Regeln+Snippets als JSON sichern/wiederherstellen</li>
-          </ul>
-          <p><b>Hinweis zur UI-Sprache:</b> Die UI-Texte sind aktuell auf Deutsch. Die Sprachwahl betrifft nur die Snippet-Sprache, nicht die Men\u00fcs. Vollst\u00e4ndige UI-\u00dcbersetzung ist geplant.</p>
-        </div>
+          <div class="sfhl-help-sec">
+            <div class="sfhl-help-hdr">
+              <div class="sfhl-help-dot" style="background:#3b82f6"></div>
+              <span class="sfhl-help-lbl">Auto-Refresh</span>
+              <svg class="sfhl-help-chv" viewBox="0 0 12 12"><polyline points="2,4 6,8 10,4"/></svg>
+            </div>
+            <div class="sfhl-help-bdy"><div class="sfhl-help-inn">
+              <p>Klickt automatisch den SF-Refresh-Button in Case-Listen. Ein Countdown im Button zeigt die Sekunden bis zur n\u00e4chsten Aktualisierung.</p>
+              <ul>
+                <li>Neu eingetroffene Eintr\u00e4ge blinken kurz auf</li>
+                <li>Refresh wird \u00fcbersprungen, wenn aktiv getippt wird (verhindert Datenverlust)</li>
+                <li>Intervall frei einstellbar (min. 5 Sek.)</li>
+              </ul>
+            </div></div>
+          </div>
 
-        <div class="sfhl-set-section">
-          <h3>Tastenk\u00fcrzel</h3>
-          <ul style="margin:4px 0 4px 18px;padding:0">
-            <li><code>Alt+R</code> \u2014 Panel \u00f6ffnen/schlie\u00dfen</li>
-            <li><code>Esc</code> \u2014 Panel/Dropdown schlie\u00dfen</li>
-            <li><code>;;</code> \u2014 Snippet-Dropdown \u00f6ffnen (in Textfeldern)</li>
-          </ul>
-        </div>
+          <div class="sfhl-help-sec">
+            <div class="sfhl-help-hdr">
+              <div class="sfhl-help-dot" style="background:#8b5cf6"></div>
+              <span class="sfhl-help-lbl">Einstellungen &amp; Export</span>
+              <svg class="sfhl-help-chv" viewBox="0 0 12 12"><polyline points="2,4 6,8 10,4"/></svg>
+            </div>
+            <div class="sfhl-help-bdy"><div class="sfhl-help-inn">
+              <ul>
+                <li><b>Trigger-Prefix</b> \u2014 z.B. <code>;;</code>, <code>::</code>, <code>//</code></li>
+                <li><b>Dein Name</b> \u2014 wird f\u00fcr <code>{name}</code> verwendet</li>
+                <li><b>Default language</b> \u2014 Snippet-Variante DE/EN beim Einf\u00fcgen</li>
+                <li><b>Auto-Wrap</b> \u2014 Anrede/Signatur automatisch ein-/ausschalten</li>
+                <li><b>Export</b> \u2014 Regeln + Snippets als JSON-Datei sichern</li>
+                <li><b>Import</b> \u2014 JSON-Datei einlesen (ersetzt bestehende Daten)</li>
+              </ul>
+            </div></div>
+          </div>
 
-        <div class="sfhl-set-section">
-          <h3>Probleme?</h3>
-          <p>Bei Fehlern hilft oft: Seite neu laden (F5), Tab schlie\u00dfen und neu \u00f6ffnen, oder Browser-Konsole \u00f6ffnen (F12) um <code>[SFHL]</code>-Meldungen zu sehen. Feedback gerne via GitHub-Link unten.</p>
+          <div class="sfhl-help-sec">
+            <div class="sfhl-help-hdr">
+              <div class="sfhl-help-dot" style="background:#6b7280"></div>
+              <span class="sfhl-help-lbl">Tastenk\u00fcrzel</span>
+              <svg class="sfhl-help-chv" viewBox="0 0 12 12"><polyline points="2,4 6,8 10,4"/></svg>
+            </div>
+            <div class="sfhl-help-bdy"><div class="sfhl-help-inn">
+              <table class="sfhl-help-tbl">
+                <tr><th>K\u00fcrzel</th><th>Aktion</th></tr>
+                <tr><td><code>Alt+R</code></td><td>Panel \u00f6ffnen / schlie\u00dfen</td></tr>
+                <tr><td><code>Esc</code></td><td>Panel oder Dropdown schlie\u00dfen</td></tr>
+                <tr><td><code>;;</code></td><td>Snippet-Dropdown \u00f6ffnen (in Textfeldern)</td></tr>
+                <tr><td><code>\u2191 \u2193</code></td><td>Im Dropdown navigieren</td></tr>
+                <tr><td><code>Enter</code> / <code>Tab</code></td><td>Snippet einf\u00fcgen</td></tr>
+              </table>
+            </div></div>
+          </div>
+
+          <div class="sfhl-help-sec">
+            <div class="sfhl-help-hdr">
+              <div class="sfhl-help-dot" style="background:#ef4444"></div>
+              <span class="sfhl-help-lbl">Probleme &amp; Tipps</span>
+              <svg class="sfhl-help-chv" viewBox="0 0 12 12"><polyline points="2,4 6,8 10,4"/></svg>
+            </div>
+            <div class="sfhl-help-bdy"><div class="sfhl-help-inn">
+              <table class="sfhl-help-tbl">
+                <tr><th>Problem</th><th>L\u00f6sung</th></tr>
+                <tr><td>Markierung fehlt</td><td>Seite neu laden (F5), Regeln pr\u00fcfen</td></tr>
+                <tr><td>Snippet-Dropdown erscheint nicht</td><td>Prefix in Einstellungen pr\u00fcfen (Standard: <code>;;</code>)</td></tr>
+                <tr><td>Anrede / Name leer</td><td>Feld muss im SF-Layout sichtbar sein, Seite neu laden</td></tr>
+                <tr><td>Auto-Refresh stoppt</td><td>F12 \u00f6ffnen, auf <code>[SFHL]</code>-Meldungen achten</td></tr>
+                <tr><td>Regeln verschwunden</td><td>localStorage gel\u00f6scht? \u2192 Export-Datei einspielen</td></tr>
+              </table>
+              <p><b>Debug:</b> Alle Skript-Meldungen erscheinen in der Browser-Konsole (F12) mit dem Prefix <code>[SFHL]</code>.</p>
+            </div></div>
+          </div>
+
         </div>
       </div>
     </div>
@@ -1334,6 +1412,8 @@
     const fill = e.target.closest('.sfhl-sw-fill');
     if (fill) { e.stopPropagation(); showPalette(fill.closest('.sfhl-sw')); return; }
     if (!e.target.closest('.sfhl-palette')) closePalette();
+    const hdr = e.target.closest('.sfhl-help-hdr');
+    if (hdr) { const sec = hdr.closest('.sfhl-help-sec'); if (sec) sec.classList.toggle('sfhl-open'); }
   });
   document.addEventListener('click', e => { if (!e.target.closest('.sfhl-palette') && !e.target.closest('.sfhl-sw')) closePalette(); });
   panel.addEventListener('change', e => { if (e.target.matches('input[type="color"]')) { const sw = e.target.closest('.sfhl-sw'); if (sw) applyColor(sw, e.target.value); } });
