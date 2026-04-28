@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.0.2
+// @version      4.0.3
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.0.2';
+  const VERSION = '4.0.3';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -888,6 +888,27 @@
     .sfhl-help-tbl td{padding:4px 7px;border-bottom:1px solid #f9fafb;vertical-align:top}
     .sfhl-help-tbl tr:last-child td{border-bottom:none}
     .sfhl-help-tbl td:first-child{white-space:nowrap;color:#4b5563}
+    /* Regel-Tester */
+    .sfhl-tester-bar{border-top:1px solid #f3f4f6;flex-shrink:0}
+    .sfhl-tester-toggle{display:flex;align-items:center;gap:6px;padding:7px 14px;cursor:pointer;font-size:11.5px;color:#6b7280;user-select:none;transition:background .15s}
+    .sfhl-tester-toggle:hover{background:#f9fafb;color:#374151}
+    .sfhl-tester-toggle svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;flex-shrink:0}
+    .sfhl-tester-chv{margin-left:auto;transition:transform .2s}
+    .sfhl-tester-bar.open .sfhl-tester-chv{transform:rotate(180deg)}
+    .sfhl-tester-body{display:none;padding:0 14px 10px}
+    .sfhl-tester-bar.open .sfhl-tester-body{display:block}
+    .sfhl-tester-input{width:100%;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;box-sizing:border-box;outline:none;background:#fff}
+    .sfhl-tester-input:focus{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.1)}
+    .sfhl-tester-result{margin-top:6px;font-size:11.5px;min-height:20px;display:flex;align-items:center}
+    /* Snippet-Vorschau Popup */
+    .sfhl-snip-prev{position:fixed;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:12px 14px;z-index:2147483648;width:280px;max-height:220px;overflow:hidden;pointer-events:none;opacity:0;transition:opacity .12s}
+    .sfhl-snip-prev.vis{opacity:1}
+    .sfhl-snip-prev-lbl{font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px}
+    .sfhl-snip-prev-body{font-size:12px;line-height:1.55;color:#374151;overflow:hidden;max-height:170px}
+    .sfhl-snip-prev-body b,.sfhl-snip-prev-body strong{font-weight:600}
+    .sfhl-snip-prev-body i,.sfhl-snip-prev-body em{font-style:italic}
+    .sfhl-snip-prev-body ul,.sfhl-snip-prev-body ol{padding-left:16px;margin:2px 0}
+    .sfhl-snip-prev-body a{color:#6366f1;text-decoration:underline}
     .sfhl-set-row2{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12.5px;color:#374151}
     .sfhl-set-row2 label{min-width:80px;font-size:12px;color:#6b7280;flex-shrink:0}
     .sfhl-set-row2 input[type="text"],.sfhl-set-row2 select{flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12.5px}
@@ -999,6 +1020,16 @@
         <div class="sfhl-add-acts">
           <div class="sfhl-match-badge">Treffer: <span class="num">0</span></div>
           <div style="display:flex;gap:6px"><div class="sfhl-btn-sm sfhl-add-cancel" role="button">Abbrechen</div><div class="sfhl-btn-sm sfhl-btn-primary sfhl-add-save" role="button">Hinzuf\u00fcgen</div></div>
+        </div>
+      </div>
+      <div class="sfhl-tester-bar">
+        <div class="sfhl-tester-toggle" role="button">
+          <svg viewBox="0 0 16 16"><circle cx="6.5" cy="6.5" r="4"/><line x1="9.5" y1="9.5" x2="14" y2="14"/></svg>Regel testen
+          <svg class="sfhl-tester-chv" viewBox="0 0 12 12" style="width:10px;height:10px;stroke:#9ca3af;fill:none;stroke-width:2;stroke-linecap:round"><polyline points="2,4 6,8 10,4"/></svg>
+        </div>
+        <div class="sfhl-tester-body">
+          <input type="text" class="sfhl-tester-input" placeholder="Beispieltext eingeben\u2026">
+          <div class="sfhl-tester-result"></div>
         </div>
       </div>
     </div>
@@ -1269,6 +1300,9 @@
   // Dropdown for snippet trigger
   const dropdown = document.createElement('div'); dropdown.className = 'sfhl-dropdown';
   document.documentElement.appendChild(dropdown);
+  const snipPrev = document.createElement('div'); snipPrev.className = 'sfhl-snip-prev';
+  document.documentElement.appendChild(snipPrev);
+  let _snipPrevTimer = null;
 
   // ===== Refs =====
   const $ = s => panel.querySelector(s);
@@ -1440,6 +1474,22 @@
     addForm.classList.remove('vis'); panel.querySelector('[data-tab="rules"] .sfhl-add-bar').style.display='flex'; toast('Regel hinzugef\u00fcgt','success');
   };
   addTermEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('.sfhl-add-save').click(); } });
+  $('.sfhl-tester-toggle').onclick = () => {
+    const bar = $('.sfhl-tester-bar');
+    const isOpen = bar.classList.toggle('open');
+    if (isOpen) bar.querySelector('.sfhl-tester-input').focus();
+  };
+  $('.sfhl-tester-input').addEventListener('input', e => {
+    const txt = e.target.value.trim();
+    const res = $('.sfhl-tester-result');
+    if (!txt) { res.innerHTML = ''; return; }
+    const match = bestMatch(txt);
+    if (match) {
+      res.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 6px;border-radius:5px;background:${escH(match.color)};font-size:11.5px"><span style="width:8px;height:8px;border-radius:50%;background:rgba(0,0,0,.12);flex-shrink:0"></span><b>${escH(match.term)}</b></span>`;
+    } else {
+      res.innerHTML = '<span style="color:#9ca3af;font-size:11.5px">Keine Regel trifft zu.</span>';
+    }
+  });
 
   // Refresh tab
   $('.sfhl-rf-apply').onclick = () => { const v=parseInt(rfInput.value,10); const s=saveRefreshSecs(Number.isFinite(v)?v:60); rfInput.value=String(s); restartRefresh(); updatePill(); toast(`Intervall: ${s}s`,'success'); };
@@ -2167,7 +2217,7 @@
   // ===== Snippet Trigger Engine =====
   let ddSelectedIdx = -1;
 
-  function closeDropdown() { dropdown.classList.remove('vis'); ddSelectedIdx = -1; }
+  function closeDropdown() { dropdown.classList.remove('vis'); snipPrev.classList.remove('vis'); ddSelectedIdx = -1; }
 
   function getCaretCoords(el) {
     try {
@@ -2457,6 +2507,28 @@
     const item = e.target.closest('.sfhl-dd-item'); if (!item) return;
     const snip = SNIPPETS.find(s => s.id === item.dataset.snipId);
     if (snip && dropdown._el && dropdown._triggerInfo) insertSnippet(dropdown._el, dropdown._triggerInfo, snip);
+  });
+
+  // Snippet-Vorschau beim Hover
+  dropdown.addEventListener('mouseover', e => {
+    const item = e.target.closest('.sfhl-dd-item'); if (!item) return;
+    clearTimeout(_snipPrevTimer);
+    const snip = (dropdown._matches || []).find(s => s.id === item.dataset.snipId);
+    if (!snip) return;
+    const lang = dropdown._activeLang || 'de';
+    const body = (lang === 'en' && snip.bodyEn) ? snip.bodyEn : snip.body;
+    snipPrev.innerHTML = `<div class="sfhl-snip-prev-lbl">${escH(snip.label)}</div><div class="sfhl-snip-prev-body">${sanitizeHtml(body)}</div>`;
+    const ddRect = dropdown.getBoundingClientRect();
+    const prevW = 280;
+    let left = ddRect.left - prevW - 8;
+    if (left < 8) left = ddRect.right + 8;
+    const top = Math.max(8, Math.min(item.getBoundingClientRect().top, window.innerHeight - 230));
+    snipPrev.style.left = left + 'px';
+    snipPrev.style.top = top + 'px';
+    snipPrev.classList.add('vis');
+  });
+  dropdown.addEventListener('mouseleave', () => {
+    _snipPrevTimer = setTimeout(() => snipPrev.classList.remove('vis'), 80);
   });
 
   // Dropdown schließen bei Klick irgendwo anders
