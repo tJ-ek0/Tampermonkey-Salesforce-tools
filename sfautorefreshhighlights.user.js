@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.1.0
+// @version      4.1.1
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.1.0';
+  const VERSION = '4.1.1';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -520,11 +520,8 @@
     if (!s) return false;
     const v = s.trim();
     if (v.length < 2 || v.length > 100) return false;
-    // Muss mit Buchstabe beginnen, nicht mit Ziffer/Sonderzeichen
     if (!/^[A-Za-zÄÖÜäöüßéèàâêîôûÉÈÀÂÊÎÔÛñÑçÇ]/.test(v)) return false;
-    // Muss mindestens einen Buchstaben enthalten
     if (!/[A-Za-zÄÖÜäöüß]{2,}/.test(v)) return false;
-    // Verbiete typische SF-UI-Wörter
     const lower = v.toLowerCase();
     const UI_BLACKLIST = [
       'bearbeiten','edit','löschen','delete','speichern','save','abbrechen','cancel',
@@ -536,17 +533,61 @@
       'siehe alle','view all','show all','alle anzeigen','no value','keine'
     ];
     for (const bad of UI_BLACKLIST) if (lower.includes(bad)) return false;
-    // Ablehnen wenn überwiegend Ziffern/Sonderzeichen
     const letters = (v.match(/[A-Za-zÄÖÜäöüß]/g) || []).length;
     if (letters / v.length < 0.5) return false;
+    // Einzelwort-Namen müssen typische Nicht-Personen-Begriffe ausschließen
+    const SINGLE_WORD_BLACKLIST = new Set([
+      'portal','account','owner','user','system','admin','administrator','support',
+      'service','customer','kunde','firma','company','contact','kontakt','vertrieb',
+      'sales','help','hilfe','team','gruppe','group','public','intern','extern',
+      'standard','default','test','demo','muster','beispiel','sample','dummy',
+      'anonym','anonymous','unbekannt','unknown','sonstige','other','keine','none'
+    ]);
+    const words = v.split(/\s+/);
+    if (words.length === 1 && SINGLE_WORD_BLACKLIST.has(lower)) return false;
     return true;
+  }
+
+  // Prüft, ob ein Element in einem Navigations-/Sidebar-Bereich liegt
+  // (Recently Viewed, Tab-Bar, Utility-Bar etc. — NICHT der Hauptdatensatz)
+  function isInsideNavigation(el) {
+    const NAV_TAGS = new Set([
+      'one-app-nav-bar','one-utility-bar','one-app-launcher-menu','one-base-app-launcher',
+      'force-tabs-tabset','navex-laf-tabset','one-app-nav-bar-item-root',
+      'global-search','one-global-navigation','force-relatedlist-related-list-item',
+      'navex-console-navigation-menu','navex-recent-items','one-recent-items'
+    ]);
+    let n = el;
+    let hops = 0;
+    while (n && hops < 50) {
+      const tag = (n.tagName || '').toLowerCase();
+      if (NAV_TAGS.has(tag)) return true;
+      if (tag.startsWith('navex-') && tag.includes('tab')) return true;
+      n = n.parentElement || (n.getRootNode && n.getRootNode().host) || null;
+      hops++;
+    }
+    return false;
   }
 
   function readContactName() {
     try {
-      // 1. Zuverlässigste Methode: Contact-Link mit Validierung
+      // 1a. Bevorzugt: lightning-output-field mit field-name="ContactId"
+      //     (das ist garantiert die Contact-Lookup im Hauptdatensatz)
+      const outputFields = deepQueryAll(document, 'lightning-output-field[field-name="ContactId"], records-record-layout-output-field[field-name="ContactId"]');
+      for (const of_ of outputFields) {
+        const link = deepQuery(of_, 'a[href*="/r/Contact/"], a[href*="/Contact/"]');
+        if (link) {
+          const v = (link.textContent || '').trim();
+          if (isLikelyPersonName(v)) return v;
+        }
+        const txt = getDeepText(of_);
+        if (isLikelyPersonName(txt)) return txt;
+      }
+
+      // 1b. Contact-Link, aber NUR im Hauptdatensatz (nicht in Sidebar/Tabs/Recent Items)
       const contactLinks = deepQueryAll(document, 'a[href*="/lightning/r/Contact/"], a[href*="/r/Contact/"]');
       for (const a of contactLinks) {
+        if (isInsideNavigation(a)) continue;
         const v = (a.textContent || '').trim();
         if (isLikelyPersonName(v)) return v;
       }
