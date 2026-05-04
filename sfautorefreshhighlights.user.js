@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.1.1
+// @version      4.1.2
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.1.1';
+  const VERSION = '4.1.2';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -569,6 +569,92 @@
     return false;
   }
 
+  // Sucht eine Section/Karte mit Titel wie "Contact-Details" / "Kontakt-Details"
+  // und liefert das Container-Element. Dort sind Salutation/LastName direkt
+  // als output-fields sichtbar (page-layout-spezifisch).
+  function findContactDetailsSection() {
+    try {
+      const TITLE_PATTERNS = [/^contact[\s\-_]*details?$/i, /^kontakt[\s\-_]*details?$/i, /^contact\s*info/i];
+      // Salesforce rendert Section-Titles in verschiedenen Elementen:
+      const titleSelectors = 'h1,h2,h3,h4,h5,header,.slds-card__header-title,.slds-section__title,span.title,lightning-formatted-text';
+      const titles = deepQueryAll(document, titleSelectors);
+      for (const t of titles) {
+        if (isInsideNavigation(t)) continue;
+        const txt = (t.textContent || '').trim();
+        if (!txt || txt.length > 60) continue;
+        if (!TITLE_PATTERNS.some(rx => rx.test(txt))) continue;
+        // Container hochlaufen: Section/Card/Flexipage-Tab
+        let n = t;
+        let hops = 0;
+        while (n && hops < 12) {
+          const tag = (n.tagName || '').toLowerCase();
+          if (tag === 'lightning-card' || tag === 'flexipage-component2' ||
+              tag === 'flexipage-component' || tag === 'records-record-layout-section' ||
+              tag.startsWith('flexipage-') || (n.classList && n.classList.contains('slds-card'))) {
+            return n;
+          }
+          n = n.parentElement || (n.getRootNode && n.getRootNode().host) || null;
+          hops++;
+        }
+        // Fallback: nimm direkten Eltern-Container
+        if (t.parentElement) return t.parentElement.parentElement || t.parentElement;
+      }
+    } catch {}
+    return null;
+  }
+
+  // Liest ein Feld nach Label-Text aus einem bestimmten Container (Shadow-DOM-fähig)
+  function readFieldFromContainer(container, labels) {
+    if (!container) return '';
+    const lows = labels.map(l => l.toLowerCase());
+    try {
+      const ctrs = deepQueryAll(container, '.slds-form-element,lightning-output-field,records-record-layout-item,force-record-layout-item');
+      for (const ctr of ctrs) {
+        const lbl = ctr.shadowRoot
+          ? deepQuery(ctr.shadowRoot, '.slds-form-element__label,dt,label,span.label')
+          : ctr.querySelector('.slds-form-element__label,dt,label,span.label');
+        if (!lbl) continue;
+        const lt = (lbl.textContent || '').trim().toLowerCase();
+        if (!lows.some(l => lt === l || lt.startsWith(l))) continue;
+        const val = ctr.shadowRoot
+          ? deepQuery(ctr.shadowRoot, 'lightning-formatted-text,lightning-formatted-name,lightning-formatted-picklist,lightning-formatted-phone,lightning-formatted-email,a,.slds-form-element__static,dd,p')
+          : ctr.querySelector('lightning-formatted-text,lightning-formatted-name,lightning-formatted-picklist,lightning-formatted-phone,lightning-formatted-email,a,.slds-form-element__static,dd,p');
+        if (val) {
+          const v = getDeepText(val) || (val.textContent || '').trim();
+          if (v && v !== lt) return v;
+        }
+        // Fallback: Container-Text minus Label
+        const full = getDeepText(ctr);
+        const escaped = lt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const stripped = full.replace(new RegExp('^\\s*' + escaped + '\\s*', 'i'), '').trim();
+        if (stripped && stripped.length < 200) return stripped;
+      }
+    } catch {}
+    return '';
+  }
+
+  // Liest komplette Contact-Daten direkt aus der "Contact-Details"-Section
+  // wenn diese im Page-Layout vorhanden ist. Liefert null wenn nicht gefunden.
+  function readContactFromDetailsSection() {
+    const section = findContactDetailsSection();
+    if (!section) return null;
+    const sal  = readFieldFromContainer(section, ['anrede','salutation']);
+    const fn   = readFieldFromContainer(section, ['vorname','first name']);
+    const ln   = readFieldFromContainer(section, ['nachname','last name','name']);
+    const name = readFieldFromContainer(section, ['name','vollständiger name','full name','contact name','kontaktname']);
+    const phone = readFieldFromContainer(section, ['telefon','phone']);
+    const mob  = readFieldFromContainer(section, ['mobil','mobile']);
+    if (!sal && !fn && !ln && !name) return null;
+    return {
+      Salutation: sal || '',
+      FirstName: fn || '',
+      LastName: ln || (name ? name.split(' ').pop() : ''),
+      Name: name || [sal, fn, ln].filter(Boolean).join(' '),
+      Phone: phone || '',
+      MobilePhone: mob || ''
+    };
+  }
+
   function readContactName() {
     try {
       // 1a. Bevorzugt: lightning-output-field mit field-name="ContactId"
@@ -792,16 +878,18 @@
     const techniker  = readSFField(['kommunikation','techniker','communication owner']);
     const loesung    = '';
     const produkt    = readSFField(['produkt','product','device type','gerätetyp']);
+    // Priorität: API > Contact-Details-Section > generisches DOM-Scraping > Namens-Parser
     const _api       = _contactApiCache;
-    const kontakt    = readContactName();
-    // Wenn API nicht verfügbar: Anrede/Nachname aus angezeigtem Contact-Namen parsen
-    const _parsed    = !_api && kontakt ? parseContactName(kontakt) : null;
-    if (!_api) console.log('[SFHL] DOM-Fallback: kontakt="' + kontakt + '" parsed=', _parsed);
-    const anrede     = (_api && _api.Salutation)   || readSFField(['anrede','salutation']) || (_parsed?.salutation || '');
-    const nachname   = (_api && _api.LastName)      || readSFField(['nachname','last name']) || (_parsed?.lastName || '');
-    const vorname    = (_api && _api.FirstName)     || (_parsed?.firstName || (kontakt ? kontakt.split(' ').slice(0, -1).join(' ') : ''));
-    const telefon    = (_api && _api.Phone)         || readSFField(['telefon','phone']);
-    const mobil      = (_api && _api.MobilePhone)   || readSFField(['mobil','mobile']);
+    const _section   = !_api ? readContactFromDetailsSection() : null;
+    const _src       = _api || _section;
+    const kontakt    = (_src && _src.Name) || readContactName();
+    const _parsed    = !_src && kontakt ? parseContactName(kontakt) : null;
+    if (!_api) console.log('[SFHL] Quelle:', _section ? 'Contact-Details-Section' : 'DOM-Parser', 'kontakt="' + kontakt + '"', _section || _parsed);
+    const anrede     = (_src && _src.Salutation)   || readSFField(['anrede','salutation']) || (_parsed?.salutation || '');
+    const nachname   = (_src && _src.LastName)     || readSFField(['nachname','last name']) || (_parsed?.lastName || '');
+    const vorname    = (_src && _src.FirstName)    || (_parsed?.firstName || (kontakt ? kontakt.split(' ').slice(0, -1).join(' ') : ''));
+    const telefon    = (_src && _src.Phone)        || readSFField(['telefon','phone']);
+    const mobil      = (_src && _src.MobilePhone)  || readSFField(['mobil','mobile']);
     // API-Daten für nächsten Aufruf vorab laden (nicht-blockierend)
     _prefetchContactDebounced();
     const firma      = readSFField(['account','firma','account name']);
