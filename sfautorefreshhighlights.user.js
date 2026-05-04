@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.0.9
+// @version      4.1.0
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.0.9';
+  const VERSION = '4.1.0';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -514,28 +514,55 @@
   }
 
   // Kontaktname: sucht in Highlight-Feldern und im Detail-Layout
+  // Validiert, ob ein String wirklich ein Personenname sein kann.
+  // Filtert SF-UI-Texte wie "36× bearbeiten", "Neu", Zahlen-Counter etc. aus.
+  function isLikelyPersonName(s) {
+    if (!s) return false;
+    const v = s.trim();
+    if (v.length < 2 || v.length > 100) return false;
+    // Muss mit Buchstabe beginnen, nicht mit Ziffer/Sonderzeichen
+    if (!/^[A-Za-zÄÖÜäöüßéèàâêîôûÉÈÀÂÊÎÔÛñÑçÇ]/.test(v)) return false;
+    // Muss mindestens einen Buchstaben enthalten
+    if (!/[A-Za-zÄÖÜäöüß]{2,}/.test(v)) return false;
+    // Verbiete typische SF-UI-Wörter
+    const lower = v.toLowerCase();
+    const UI_BLACKLIST = [
+      'bearbeiten','edit','löschen','delete','speichern','save','abbrechen','cancel',
+      'erstellen','create','neu','new','mehr','more','weniger','less','zeigen anzeigen',
+      'klicken','click','auswählen','select','aktion','action','folgen','follow',
+      'teilen','share','verknüpfen','link','suchen','search','filter','sortieren','sort',
+      'aktualisieren','refresh','laden','load','×','records','datensätze','elemente','items',
+      'entfernen','remove','hinzufügen','add','schließen','close','öffnen','open',
+      'siehe alle','view all','show all','alle anzeigen','no value','keine'
+    ];
+    for (const bad of UI_BLACKLIST) if (lower.includes(bad)) return false;
+    // Ablehnen wenn überwiegend Ziffern/Sonderzeichen
+    const letters = (v.match(/[A-Za-zÄÖÜäöüß]/g) || []).length;
+    if (letters / v.length < 0.5) return false;
+    return true;
+  }
+
   function readContactName() {
     try {
-      // 1. Zuverlässigste Methode: Contact-Link direkt aus Lookup-Feldern
-      //    SF rendert Lookup-Werte als <a href="/lightning/r/Contact/...">
+      // 1. Zuverlässigste Methode: Contact-Link mit Validierung
       const contactLinks = deepQueryAll(document, 'a[href*="/lightning/r/Contact/"], a[href*="/r/Contact/"]');
       for (const a of contactLinks) {
         const v = (a.textContent || '').trim();
-        if (v && v.length > 1 && v.length < 100) return v;
+        if (isLikelyPersonName(v)) return v;
       }
 
-      // 2. Highlights-Panel: force-highlights-details-item mit Kontakt-Label
+      // 2. Highlights-Panel mit Kontakt-Label (Label muss exakt matchen)
       const highlights = deepQueryAll(document, 'force-highlights-details-item');
       for (const item of highlights) {
         const labelEl = deepQuery(item.shadowRoot || item, '.slds-text-title, .slds-form-element__label, dt, label, p');
         if (!labelEl) continue;
         const lt = (labelEl.textContent || '').trim().toLowerCase();
-        if (!['kontaktname','kontakt','contact name','contact','name'].includes(lt)) continue;
+        if (!['kontaktname','kontakt','contact name','contact'].includes(lt)) continue;
         const v = getDeepText(item).replace(new RegExp('^' + lt, 'i'), '').trim();
-        if (v && v.length > 1 && v.length < 100) return v;
+        if (isLikelyPersonName(v)) return v;
       }
 
-      // 3. Form-Felder mit Kontakt-Label (getDeepText für Shadow-DOM Lookup-Werte)
+      // 3. Form-Felder mit exaktem Kontakt-Label
       const containers = deepQueryAll(document, '.slds-form-element,force-record-layout-item,records-record-layout-item,lightning-output-field');
       for (const ctr of containers) {
         const lbl = ctr.shadowRoot
@@ -543,23 +570,22 @@
           : ctr.querySelector('.slds-form-element__label,dt,label,span.label');
         if (!lbl) continue;
         const lt = (lbl.textContent || '').trim().toLowerCase();
-        if (!['kontaktname','kontakt','contact name','contact name','name'].includes(lt)) continue;
-        // Lookup-Link suchen
+        if (!['kontaktname','kontakt','contact name','contact'].includes(lt)) continue;
         const link = ctr.shadowRoot
           ? deepQuery(ctr.shadowRoot, 'a[href*="/r/Contact/"], a[href*="/Contact/"], force-lookup a, lightning-formatted-lookup a')
           : ctr.querySelector('a[href*="/r/Contact/"], a[href*="/Contact/"], force-lookup a, lightning-formatted-lookup a');
         if (link) {
           const v = (link.textContent || '').trim();
-          if (v && v.length > 1 && v.length < 100) return v;
+          if (isLikelyPersonName(v)) return v;
         }
-        // Fallback: getDeepText auf gesamten Container, Label abziehen
         const full = getDeepText(ctr);
         const stripped = full.replace(new RegExp('^\\s*' + lt + '\\s*', 'i'), '').trim();
-        if (stripped && stripped.length > 1 && stripped.length < 100) return stripped;
+        if (isLikelyPersonName(stripped)) return stripped;
       }
 
-      // 4. readSFField als letzter Fallback
-      return readSFField(['kontaktname','kontakt','contact name','contact','name']);
+      // 4. readSFField als letzter Fallback (mit Validierung)
+      const fallback = readSFField(['kontaktname','kontakt','contact name']);
+      if (isLikelyPersonName(fallback)) return fallback;
     } catch {}
     return '';
   }
@@ -571,6 +597,8 @@
   let _contactApiCache = null;
   let _contactApiCacheId = null;
   let _contactApiFetching = false;
+  let _contactApiDisabled = false; // Circuit-Breaker: nach 3 Fehlern abschalten
+  let _contactApiFailCount = 0;
 
   function extractContactId() {
     try {
@@ -614,14 +642,21 @@
       }
     });
     if (!resp.ok) {
-      console.warn('[SFHL] UI API Fehler', resp.status, url);
+      _contactApiFailCount++;
+      if (_contactApiFailCount >= 3) {
+        _contactApiDisabled = true;
+        console.warn('[SFHL] UI API deaktiviert nach 3 Fehlern (Status ' + resp.status + '). DOM-Fallback aktiv.');
+      } else {
+        console.warn('[SFHL] UI API Fehler', resp.status, url);
+      }
       return null;
     }
+    _contactApiFailCount = 0;
     return await resp.json();
   }
 
   async function prefetchContactApi() {
-    if (_contactApiFetching) return;
+    if (_contactApiFetching || _contactApiDisabled) return;
     let contactId = extractContactId();
 
     // Falls kein direkter Contact-Link sichtbar ist (z.B. auf WorkOrder),
@@ -720,6 +755,7 @@
     const kontakt    = readContactName();
     // Wenn API nicht verfügbar: Anrede/Nachname aus angezeigtem Contact-Namen parsen
     const _parsed    = !_api && kontakt ? parseContactName(kontakt) : null;
+    if (!_api) console.log('[SFHL] DOM-Fallback: kontakt="' + kontakt + '" parsed=', _parsed);
     const anrede     = (_api && _api.Salutation)   || readSFField(['anrede','salutation']) || (_parsed?.salutation || '');
     const nachname   = (_api && _api.LastName)      || readSFField(['nachname','last name']) || (_parsed?.lastName || '');
     const vorname    = (_api && _api.FirstName)     || (_parsed?.firstName || (kontakt ? kontakt.split(' ').slice(0, -1).join(' ') : ''));
