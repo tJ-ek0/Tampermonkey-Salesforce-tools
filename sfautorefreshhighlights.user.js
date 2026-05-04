@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.0.8
+// @version      4.0.9
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.0.8';
+  const VERSION = '4.0.9';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -603,9 +603,15 @@
   async function fetchUiApiRecord(recordId, fieldList) {
     const fields = fieldList.join(',');
     const url = `/services/data/v59.0/ui-api/records/${recordId}?fields=${encodeURIComponent(fields)}`;
+    // Lightning-spezifische Header: ohne diese verweigert SF die Auth (401)
     const resp = await fetch(url, {
       credentials: 'same-origin',
-      headers: { 'Accept': 'application/json' }
+      headers: {
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-Salesforce-Lightning-Request-Source': 'aura',
+        'X-SFDC-Page-Cache': 'true'
+      }
     });
     if (!resp.ok) {
       console.warn('[SFHL] UI API Fehler', resp.status, url);
@@ -661,6 +667,36 @@
 
   const _prefetchContactDebounced = debounce(prefetchContactApi, 600);
 
+  // ===== Fallback: Anrede/Nachname aus Contact-Anzeigename parsen =====
+  // Wenn die API nicht verfügbar ist (z.B. 401), versuchen wir aus dem
+  // sichtbaren Contact-Namen "Herr Dr. Max Mustermann" zu zerlegen.
+  const KNOWN_SALUTATIONS = ['herr','frau','mr.','mrs.','ms.','mx.','sehr geehrte','sehr geehrter'];
+  const KNOWN_TITLES = ['dr.','dr','prof.','prof','dipl.','ing.','dipl.-ing.','prof.dr.','dr.med.','dr.-ing.'];
+  const NAME_PARTICLES = ['von','van','de','der','del','di','da','zu','vom','zum','mc','mac','o\''];
+
+  function parseContactName(fullName) {
+    if (!fullName) return { salutation:'', firstName:'', lastName:'' };
+    const tokens = fullName.trim().split(/\s+/);
+    let salutation = '';
+    let i = 0;
+    // Erste(s) Token als Anrede prüfen
+    while (i < tokens.length) {
+      const t = tokens[i].toLowerCase();
+      if (KNOWN_SALUTATIONS.includes(t)) { salutation = (salutation ? salutation + ' ' : '') + tokens[i]; i++; continue; }
+      if (KNOWN_TITLES.includes(t)) { salutation = (salutation ? salutation + ' ' : '') + tokens[i]; i++; continue; }
+      break;
+    }
+    const rest = tokens.slice(i);
+    if (rest.length === 0) return { salutation, firstName:'', lastName:'' };
+    if (rest.length === 1) return { salutation, firstName:'', lastName: rest[0] };
+    // Nachnamen-Partikel zusammenfügen: "von Stein", "van der Berg"
+    let lastIdx = rest.length - 1;
+    while (lastIdx > 1 && NAME_PARTICLES.includes(rest[lastIdx - 1].toLowerCase())) lastIdx--;
+    const lastName = rest.slice(lastIdx).join(' ');
+    const firstName = rest.slice(0, lastIdx).join(' ');
+    return { salutation: salutation.trim(), firstName, lastName };
+  }
+
   function resolvePlaceholders(text) {
     const now = new Date();
     const pad = n => String(n).padStart(2,'0');
@@ -681,10 +717,12 @@
     const loesung    = '';
     const produkt    = readSFField(['produkt','product','device type','gerätetyp']);
     const _api       = _contactApiCache;
-    const anrede     = (_api && _api.Salutation)   || readSFField(['anrede','salutation']);
     const kontakt    = readContactName();
-    const nachname   = (_api && _api.LastName)      || readSFField(['nachname','last name']) || (kontakt ? kontakt.split(' ').pop() : '');
-    const vorname    = (_api && _api.FirstName)     || (kontakt ? kontakt.split(' ').slice(0, -1).join(' ') : '');
+    // Wenn API nicht verfügbar: Anrede/Nachname aus angezeigtem Contact-Namen parsen
+    const _parsed    = !_api && kontakt ? parseContactName(kontakt) : null;
+    const anrede     = (_api && _api.Salutation)   || readSFField(['anrede','salutation']) || (_parsed?.salutation || '');
+    const nachname   = (_api && _api.LastName)      || readSFField(['nachname','last name']) || (_parsed?.lastName || '');
+    const vorname    = (_api && _api.FirstName)     || (_parsed?.firstName || (kontakt ? kontakt.split(' ').slice(0, -1).join(' ') : ''));
     const telefon    = (_api && _api.Phone)         || readSFField(['telefon','phone']);
     const mobil      = (_api && _api.MobilePhone)   || readSFField(['mobil','mobile']);
     // API-Daten für nächsten Aufruf vorab laden (nicht-blockierend)
