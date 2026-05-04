@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.0.7
+// @version      4.0.8
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.0.7';
+  const VERSION = '4.0.8';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -564,9 +564,10 @@
     return '';
   }
 
-  // ===== Salesforce REST API: Contact-Daten vorab laden =====
+  // ===== Salesforce UI API: Contact-Daten vorab laden =====
   // DOM-Scraping liefert Salutation/LastName nicht zuverlässig, da diese Felder
-  // nicht im Case-Page-Layout sind. Die API nutzt die bestehende Session-Authentication.
+  // nicht im Case-Page-Layout sind. Die UI API funktioniert mit Lightning-Session-Cookies
+  // (same-origin) ohne extra Bearer-Token.
   let _contactApiCache = null;
   let _contactApiCacheId = null;
   let _contactApiFetching = false;
@@ -583,19 +584,78 @@
     return null;
   }
 
+  // Versucht, die Case-ID aus der URL zu lesen (z.B. WorkOrder zeigt nicht direkt Contact)
+  function extractCaseIdFromPage() {
+    try {
+      // Case-Link im DOM
+      const links = deepQueryAll(document, 'a[href*="/lightning/r/Case/"]');
+      for (const a of links) {
+        const m = (a.getAttribute('href') || '').match(/\/Case\/([a-zA-Z0-9]{15,18})\//);
+        if (m) return m[1];
+      }
+      // URL selbst (falls direkt auf Case-Seite)
+      const u = location.href.match(/\/lightning\/r\/Case\/([a-zA-Z0-9]{15,18})\//);
+      if (u) return u[1];
+    } catch {}
+    return null;
+  }
+
+  async function fetchUiApiRecord(recordId, fieldList) {
+    const fields = fieldList.join(',');
+    const url = `/services/data/v59.0/ui-api/records/${recordId}?fields=${encodeURIComponent(fields)}`;
+    const resp = await fetch(url, {
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!resp.ok) {
+      console.warn('[SFHL] UI API Fehler', resp.status, url);
+      return null;
+    }
+    return await resp.json();
+  }
+
   async function prefetchContactApi() {
     if (_contactApiFetching) return;
-    const id = extractContactId();
-    if (!id) return;
-    if (id === _contactApiCacheId && _contactApiCache) return;
-    _contactApiFetching = true;
+    let contactId = extractContactId();
+
+    // Falls kein direkter Contact-Link sichtbar ist (z.B. auf WorkOrder),
+    // erst Case laden, dort ContactId rausziehen
+    if (!contactId) {
+      const caseId = extractCaseIdFromPage();
+      if (!caseId) return;
+      if (caseId === _contactApiCacheId && _contactApiCache) return;
+      _contactApiFetching = true;
+      try {
+        const caseData = await fetchUiApiRecord(caseId, ['Case.ContactId']);
+        contactId = caseData?.fields?.ContactId?.value || null;
+      } catch (e) { console.warn('[SFHL] Case-Lookup fehlgeschlagen:', e); }
+      if (!contactId) { _contactApiFetching = false; return; }
+    } else {
+      if (contactId === _contactApiCacheId && _contactApiCache) return;
+      _contactApiFetching = true;
+    }
+
     try {
-      const resp = await fetch(`/services/data/v59.0/sobjects/Contact/${id}?fields=Salutation,FirstName,LastName,Name,Phone,MobilePhone`);
-      if (resp.ok) {
-        _contactApiCache = await resp.json();
-        _contactApiCacheId = id;
+      const data = await fetchUiApiRecord(contactId, [
+        'Contact.Salutation','Contact.FirstName','Contact.LastName',
+        'Contact.Name','Contact.Phone','Contact.MobilePhone'
+      ]);
+      if (data?.fields) {
+        const f = data.fields;
+        _contactApiCache = {
+          Salutation:  f.Salutation?.value  || '',
+          FirstName:   f.FirstName?.value   || '',
+          LastName:    f.LastName?.value    || '',
+          Name:        f.Name?.value        || '',
+          Phone:       f.Phone?.value       || '',
+          MobilePhone: f.MobilePhone?.value || ''
+        };
+        _contactApiCacheId = contactId;
+        console.log('[SFHL] Contact via UI API geladen:', _contactApiCache);
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[SFHL] Contact-Fetch Exception:', e);
+    }
     _contactApiFetching = false;
   }
 
