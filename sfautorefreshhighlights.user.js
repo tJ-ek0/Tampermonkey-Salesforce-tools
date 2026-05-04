@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.0.6
+// @version      4.0.7
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.0.6';
+  const VERSION = '4.0.7';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -564,6 +564,43 @@
     return '';
   }
 
+  // ===== Salesforce REST API: Contact-Daten vorab laden =====
+  // DOM-Scraping liefert Salutation/LastName nicht zuverlässig, da diese Felder
+  // nicht im Case-Page-Layout sind. Die API nutzt die bestehende Session-Authentication.
+  let _contactApiCache = null;
+  let _contactApiCacheId = null;
+  let _contactApiFetching = false;
+
+  function extractContactId() {
+    try {
+      const links = deepQueryAll(document, 'a[href*="/lightning/r/Contact/"], a[href*="/r/Contact/"]');
+      for (const a of links) {
+        const href = a.getAttribute('href') || '';
+        const m = href.match(/\/Contact\/([a-zA-Z0-9]{15,18})\//);
+        if (m) return m[1];
+      }
+    } catch {}
+    return null;
+  }
+
+  async function prefetchContactApi() {
+    if (_contactApiFetching) return;
+    const id = extractContactId();
+    if (!id) return;
+    if (id === _contactApiCacheId && _contactApiCache) return;
+    _contactApiFetching = true;
+    try {
+      const resp = await fetch(`/services/data/v59.0/sobjects/Contact/${id}?fields=Salutation,FirstName,LastName,Name,Phone,MobilePhone`);
+      if (resp.ok) {
+        _contactApiCache = await resp.json();
+        _contactApiCacheId = id;
+      }
+    } catch {}
+    _contactApiFetching = false;
+  }
+
+  const _prefetchContactDebounced = debounce(prefetchContactApi, 600);
+
   function resolvePlaceholders(text) {
     const now = new Date();
     const pad = n => String(n).padStart(2,'0');
@@ -583,12 +620,15 @@
     const techniker  = readSFField(['kommunikation','techniker','communication owner']);
     const loesung    = '';
     const produkt    = readSFField(['produkt','product','device type','gerätetyp']);
-    const anrede     = readSFField(['anrede','salutation']);
+    const _api       = _contactApiCache;
+    const anrede     = (_api && _api.Salutation)   || readSFField(['anrede','salutation']);
     const kontakt    = readContactName();
-    const nachname   = readSFField(['nachname','last name']) || (kontakt ? kontakt.split(' ').pop() : '');
-    const vorname    = kontakt ? kontakt.split(' ').slice(0,-1).join(' ') : '';
-    const telefon    = readSFField(['telefon','phone']);
-    const mobil      = readSFField(['mobil','mobile']);
+    const nachname   = (_api && _api.LastName)      || readSFField(['nachname','last name']) || (kontakt ? kontakt.split(' ').pop() : '');
+    const vorname    = (_api && _api.FirstName)     || (kontakt ? kontakt.split(' ').slice(0, -1).join(' ') : '');
+    const telefon    = (_api && _api.Phone)         || readSFField(['telefon','phone']);
+    const mobil      = (_api && _api.MobilePhone)   || readSFField(['mobil','mobile']);
+    // API-Daten für nächsten Aufruf vorab laden (nicht-blockierend)
+    _prefetchContactDebounced();
     const firma      = readSFField(['account','firma','account name']);
     const kunde      = firma;
     const vertrieb   = readSFField(['vertrieb','innendienst','internal sales']);
@@ -2982,7 +3022,21 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   function stopRefresh(){clearRf();clearCd();clrLbl();updateRfRing();}
   function restartRefresh(){if(loadRefreshOn()&&isCaseListPage())waitBtn(startLoop);else stopRefresh();}
   function waitBtn(cb){if(getRefreshButton()){cb?.();return;}if(rfObs){rfObs.disconnect();rfObs=null;}if(plId){clearInterval(plId);plId=null;}rfObs=new MutationObserver(()=>{if(getRefreshButton()){rfObs.disconnect();rfObs=null;if(plId){clearInterval(plId);plId=null;}cb?.();}});rfObs.observe(document.documentElement,{childList:true,subtree:true});plId=setInterval(()=>{if(getRefreshButton()){if(rfObs){rfObs.disconnect();rfObs=null;}clearInterval(plId);plId=null;cb?.();}},1000);}
-  window.addEventListener('load', () => setTimeout(restartRefresh, 800));
+  window.addEventListener('load', () => {
+    setTimeout(restartRefresh, 800);
+    setTimeout(prefetchContactApi, 1500);
+  });
+
+  // SPA-Navigation in Salesforce Lightning: URL ändert sich ohne Page-Reload
+  let _lastUrl = location.href;
+  setInterval(() => {
+    if (location.href !== _lastUrl) {
+      _lastUrl = location.href;
+      _contactApiCache = null;
+      _contactApiCacheId = null;
+      setTimeout(prefetchContactApi, 1500);
+    }
+  }, 1000);
 
   // ===== Triggers =====
   const rescanSoon = debounce((full=false) => { if(isCaseListPage()) highlightRows(full); }, 80);
