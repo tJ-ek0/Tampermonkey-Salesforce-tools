@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.1.4
+// @version      4.1.5
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.1.4';
+  const VERSION = '4.1.5';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -659,7 +659,22 @@
   // Nutzt field-name-Attribute (präzise) mit Label-Fallback.
   function readContactFromDetailsSection() {
     const section = findContactDetailsSection();
-    if (!section) return null;
+    if (!section) {
+      // Diagnose: welche Titel wurden überhaupt gefunden?
+      const titleSelectors = 'h1,h2,h3,h4,h5,header,.slds-card__header-title,.slds-section__title,span.title,lightning-formatted-text';
+      const allTitles = deepQueryAll(document, titleSelectors)
+        .filter(t => !isInsideNavigation(t))
+        .map(t => (t.textContent||'').trim())
+        .filter(t => t && t.length > 2 && t.length < 80)
+        .slice(0, 20);
+      console.warn('[SFHL] Contact-Details-Section nicht gefunden. Gefundene Titel:', allTitles);
+      return null;
+    }
+
+    // Diagnose: welche output-fields liegen in der Section?
+    const allFields = deepQueryAll(section, 'lightning-output-field[field-name]');
+    const fieldNames = allFields.map(el => el.getAttribute('field-name'));
+    console.log('[SFHL] Section gefunden, output-fields:', fieldNames);
 
     // Methode 1: field-name Attribut (API-Feldname, zuverlässig)
     const nameRaw = readOutputFieldValue(section, 'Name');
@@ -668,14 +683,19 @@
     const ln      = readOutputFieldValue(section, 'LastName');
     const phone   = readOutputFieldValue(section, 'Phone');
     const mob     = readOutputFieldValue(section, 'MobilePhone');
+    console.log('[SFHL] field-name Werte:', {nameRaw, sal, fn, ln, phone, mob});
 
     // Methode 2: Label-Fallback wenn field-name nicht gefunden
     const salFb   = sal   || readFieldFromContainer(section, ['anrede','salutation']);
     const fnFb    = fn    || readFieldFromContainer(section, ['vorname','first name']);
     const lnFb    = ln    || readFieldFromContainer(section, ['nachname','last name']);
     const nameFb  = nameRaw || readFieldFromContainer(section, ['name','kontaktname','contact name']);
+    console.log('[SFHL] Label-Fallback Werte:', {salFb, fnFb, lnFb, nameFb});
 
-    if (!nameFb && !lnFb && !salFb) return null;
+    if (!nameFb && !lnFb && !salFb) {
+      console.warn('[SFHL] Section gefunden aber alle Felder leer — kein sinnvoller Wert lesbar');
+      return null;
+    }
 
     // Wenn Name "Frau Ronja Isert" enthält: parseContactName zur Zerlegung nutzen
     const parsed  = (!salFb || !lnFb) && nameFb ? parseContactName(nameFb) : null;
