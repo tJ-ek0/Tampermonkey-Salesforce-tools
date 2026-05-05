@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.1.5
+// @version      4.1.6
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.1.5';
+  const VERSION = '4.1.6';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -674,7 +674,16 @@
     // Diagnose: welche output-fields liegen in der Section?
     const allFields = deepQueryAll(section, 'lightning-output-field[field-name]');
     const fieldNames = allFields.map(el => el.getAttribute('field-name'));
-    console.log('[SFHL] Section gefunden, output-fields:', fieldNames);
+    // Ohne [field-name] Filter — zeigt ob output-fields überhaupt da sind
+    const allFieldsNoAttr = deepQueryAll(section, 'lightning-output-field');
+    // Direkte Kinder der Section (Light DOM)
+    const directChildren = Array.from(section.children || []).map(el => el.tagName).slice(0, 15);
+    // Shadow Root des Section-Elements selbst
+    const sectionShadowChildren = section.shadowRoot
+      ? Array.from(section.shadowRoot.querySelectorAll('*')).slice(0, 20).map(el => el.tagName + (el.getAttribute('field-name') ? '[fn=' + el.getAttribute('field-name') + ']' : ''))
+      : [];
+    console.log('[SFHL] Section tag:', section.tagName, 'kinder:', directChildren, 'shadow-kinder:', sectionShadowChildren);
+    console.log('[SFHL] output-fields (mit field-name):', fieldNames, '| ohne Attribut:', allFieldsNoAttr.length);
 
     // Methode 1: field-name Attribut (API-Feldname, zuverlässig)
     const nameRaw = readOutputFieldValue(section, 'Name');
