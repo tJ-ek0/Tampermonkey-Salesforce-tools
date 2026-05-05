@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.1.2
+// @version      4.1.3
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.1.2';
+  const VERSION = '4.1.3';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -603,6 +603,30 @@
     return null;
   }
 
+  // Liest den Wert eines lightning-output-field anhand seines field-name-Attributs.
+  // Präziser als Label-Suche, da field-name der API-Feldname ist.
+  function readOutputFieldValue(container, ...fieldNames) {
+    for (const fieldName of fieldNames) {
+      try {
+        const els = deepQueryAll(container, `lightning-output-field[field-name="${fieldName}"], records-record-layout-output-field[field-name="${fieldName}"]`);
+        for (const el of els) {
+          // Wert-Element: bevorzuge spezifische formatted-Elemente
+          const valEl = deepQuery(el,
+            'lightning-formatted-name,lightning-formatted-picklist,' +
+            'lightning-formatted-text,lightning-formatted-phone,' +
+            'lightning-formatted-email,lightning-formatted-url,' +
+            'a[href*="/r/Contact"],a[href*="/r/"],.slds-form-element__static,dd');
+          if (valEl) {
+            const v = getDeepText(valEl) || (valEl.textContent || '').trim();
+            // Nur zurückgeben wenn nicht leer und nicht nur der Feldname selbst
+            if (v && v.length > 0 && v.toLowerCase() !== fieldName.toLowerCase()) return v.trim();
+          }
+        }
+      } catch {}
+    }
+    return '';
+  }
+
   // Liest ein Feld nach Label-Text aus einem bestimmten Container (Shadow-DOM-fähig)
   function readFieldFromContainer(container, labels) {
     if (!container) return '';
@@ -610,48 +634,57 @@
     try {
       const ctrs = deepQueryAll(container, '.slds-form-element,lightning-output-field,records-record-layout-item,force-record-layout-item');
       for (const ctr of ctrs) {
-        const lbl = ctr.shadowRoot
-          ? deepQuery(ctr.shadowRoot, '.slds-form-element__label,dt,label,span.label')
-          : ctr.querySelector('.slds-form-element__label,dt,label,span.label');
+        const lbl = deepQuery(ctr, '.slds-form-element__label,dt,label,span.label,abbr');
         if (!lbl) continue;
         const lt = (lbl.textContent || '').trim().toLowerCase();
         if (!lows.some(l => lt === l || lt.startsWith(l))) continue;
-        const val = ctr.shadowRoot
-          ? deepQuery(ctr.shadowRoot, 'lightning-formatted-text,lightning-formatted-name,lightning-formatted-picklist,lightning-formatted-phone,lightning-formatted-email,a,.slds-form-element__static,dd,p')
-          : ctr.querySelector('lightning-formatted-text,lightning-formatted-name,lightning-formatted-picklist,lightning-formatted-phone,lightning-formatted-email,a,.slds-form-element__static,dd,p');
-        if (val) {
-          const v = getDeepText(val) || (val.textContent || '').trim();
-          if (v && v !== lt) return v;
+        // Value-Element gezielt suchen (nicht getDeepText auf ganzen Container)
+        const valEl = deepQuery(ctr,
+          'lightning-formatted-name,lightning-formatted-picklist,' +
+          'lightning-formatted-text,lightning-formatted-phone,' +
+          'lightning-formatted-email,lightning-formatted-url,' +
+          '.slds-form-element__static,dd,a.textUnderline');
+        if (valEl && valEl !== lbl && !lbl.contains(valEl)) {
+          const v = getDeepText(valEl) || (valEl.textContent || '').trim();
+          if (v && v.toLowerCase() !== lt && v.length < 200) return v.trim();
         }
-        // Fallback: Container-Text minus Label
-        const full = getDeepText(ctr);
-        const escaped = lt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const stripped = full.replace(new RegExp('^\\s*' + escaped + '\\s*', 'i'), '').trim();
-        if (stripped && stripped.length < 200) return stripped;
       }
     } catch {}
     return '';
   }
 
-  // Liest komplette Contact-Daten direkt aus der "Contact-Details"-Section
-  // wenn diese im Page-Layout vorhanden ist. Liefert null wenn nicht gefunden.
+  // Liest komplette Contact-Daten direkt aus der "Contact-Details"-Section.
+  // Nutzt field-name-Attribute (präzise) mit Label-Fallback.
   function readContactFromDetailsSection() {
     const section = findContactDetailsSection();
     if (!section) return null;
-    const sal  = readFieldFromContainer(section, ['anrede','salutation']);
-    const fn   = readFieldFromContainer(section, ['vorname','first name']);
-    const ln   = readFieldFromContainer(section, ['nachname','last name','name']);
-    const name = readFieldFromContainer(section, ['name','vollständiger name','full name','contact name','kontaktname']);
-    const phone = readFieldFromContainer(section, ['telefon','phone']);
-    const mob  = readFieldFromContainer(section, ['mobil','mobile']);
-    if (!sal && !fn && !ln && !name) return null;
+
+    // Methode 1: field-name Attribut (API-Feldname, zuverlässig)
+    const nameRaw = readOutputFieldValue(section, 'Name');
+    const sal     = readOutputFieldValue(section, 'Salutation');
+    const fn      = readOutputFieldValue(section, 'FirstName');
+    const ln      = readOutputFieldValue(section, 'LastName');
+    const phone   = readOutputFieldValue(section, 'Phone');
+    const mob     = readOutputFieldValue(section, 'MobilePhone');
+
+    // Methode 2: Label-Fallback wenn field-name nicht gefunden
+    const salFb   = sal   || readFieldFromContainer(section, ['anrede','salutation']);
+    const fnFb    = fn    || readFieldFromContainer(section, ['vorname','first name']);
+    const lnFb    = ln    || readFieldFromContainer(section, ['nachname','last name']);
+    const nameFb  = nameRaw || readFieldFromContainer(section, ['name','kontaktname','contact name']);
+
+    if (!nameFb && !lnFb && !salFb) return null;
+
+    // Wenn Name "Frau Ronja Isert" enthält: parseContactName zur Zerlegung nutzen
+    const parsed  = (!salFb || !lnFb) && nameFb ? parseContactName(nameFb) : null;
+
     return {
-      Salutation: sal || '',
-      FirstName: fn || '',
-      LastName: ln || (name ? name.split(' ').pop() : ''),
-      Name: name || [sal, fn, ln].filter(Boolean).join(' '),
-      Phone: phone || '',
-      MobilePhone: mob || ''
+      Salutation:  salFb  || parsed?.salutation || '',
+      FirstName:   fnFb   || parsed?.firstName  || '',
+      LastName:    lnFb   || parsed?.lastName   || '',
+      Name:        nameFb || [salFb, fnFb, lnFb].filter(Boolean).join(' '),
+      Phone:       phone  || readFieldFromContainer(section, ['telefon','phone']) || '',
+      MobilePhone: mob    || readFieldFromContainer(section, ['mobil','mobile'])  || ''
     };
   }
 
