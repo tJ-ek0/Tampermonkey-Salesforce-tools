@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.1.6
+// @version      4.1.7
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.1.6';
+  const VERSION = '4.1.7';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -644,10 +644,20 @@
         if (!lbl) continue;
         const lt = (lbl.textContent || '').trim().toLowerCase();
         if (!lows.some(l => lt === l || lt.startsWith(l))) continue;
-        const valEl = deepQuery(root, _VAL_SEL);
-        // valEl darf nicht das Label selbst oder ein Kind des Labels sein
-        if (valEl && valEl !== lbl && !lbl.contains(valEl)) {
-          const v = getDeepText(valEl) || (valEl.textContent || '').trim();
+
+        // Strategie 1: .slds-form-element__control ist der SF-Standard-Value-Container
+        // Er enthält NUR den Wert — kein Label, kein Edit-Button.
+        const ctrl = root.querySelector('.slds-form-element__control,.slds-form-element__static');
+        if (ctrl) {
+          const v = getDeepText(ctrl);
+          if (v && v.toLowerCase() !== lt && v.length > 0 && v.length < 200) return v.trim();
+        }
+
+        // Strategie 2: formatted-Element suchen, explizit nicht im Label
+        const allVals = deepQueryAll(root, _VAL_SEL);
+        for (const ve of allVals) {
+          if (ve === lbl || lbl.contains(ve)) continue;
+          const v = getDeepText(ve) || (ve.textContent || '').trim();
           if (v && v.toLowerCase() !== lt && v.length < 200) return v.trim();
         }
       }
