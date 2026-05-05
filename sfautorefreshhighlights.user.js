@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.1.3
+// @version      4.1.4
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.1.3';
+  const VERSION = '4.1.4';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -603,23 +603,27 @@
     return null;
   }
 
+  const _VAL_SEL = 'lightning-formatted-name,lightning-formatted-picklist,' +
+    'lightning-formatted-text,lightning-formatted-phone,' +
+    'lightning-formatted-email,lightning-formatted-url,' +
+    'a[href*="/r/Contact"],a[href*="/r/"],.slds-form-element__static,dd';
+  const _LBL_SEL = '.slds-form-element__label,dt,label,span.label,abbr';
+
   // Liest den Wert eines lightning-output-field anhand seines field-name-Attributs.
-  // Präziser als Label-Suche, da field-name der API-Feldname ist.
+  // WICHTIG: shadow-root des Elements explizit als Suchroot übergeben, weil
+  // deepQuery(el, ...) nur das Light-DOM von el durchsucht, nicht el.shadowRoot.
   function readOutputFieldValue(container, ...fieldNames) {
     for (const fieldName of fieldNames) {
       try {
-        const els = deepQueryAll(container, `lightning-output-field[field-name="${fieldName}"], records-record-layout-output-field[field-name="${fieldName}"]`);
+        const els = deepQueryAll(container,
+          `lightning-output-field[field-name="${fieldName}"],` +
+          `records-record-layout-output-field[field-name="${fieldName}"]`);
         for (const el of els) {
-          // Wert-Element: bevorzuge spezifische formatted-Elemente
-          const valEl = deepQuery(el,
-            'lightning-formatted-name,lightning-formatted-picklist,' +
-            'lightning-formatted-text,lightning-formatted-phone,' +
-            'lightning-formatted-email,lightning-formatted-url,' +
-            'a[href*="/r/Contact"],a[href*="/r/"],.slds-form-element__static,dd');
+          const root = el.shadowRoot || el;
+          const valEl = deepQuery(root, _VAL_SEL);
           if (valEl) {
             const v = getDeepText(valEl) || (valEl.textContent || '').trim();
-            // Nur zurückgeben wenn nicht leer und nicht nur der Feldname selbst
-            if (v && v.length > 0 && v.toLowerCase() !== fieldName.toLowerCase()) return v.trim();
+            if (v && v.toLowerCase() !== fieldName.toLowerCase()) return v.trim();
           }
         }
       } catch {}
@@ -632,18 +636,16 @@
     if (!container) return '';
     const lows = labels.map(l => l.toLowerCase());
     try {
-      const ctrs = deepQueryAll(container, '.slds-form-element,lightning-output-field,records-record-layout-item,force-record-layout-item');
+      const ctrs = deepQueryAll(container,
+        '.slds-form-element,lightning-output-field,records-record-layout-item,force-record-layout-item');
       for (const ctr of ctrs) {
-        const lbl = deepQuery(ctr, '.slds-form-element__label,dt,label,span.label,abbr');
+        const root = ctr.shadowRoot || ctr;
+        const lbl = deepQuery(root, _LBL_SEL);
         if (!lbl) continue;
         const lt = (lbl.textContent || '').trim().toLowerCase();
         if (!lows.some(l => lt === l || lt.startsWith(l))) continue;
-        // Value-Element gezielt suchen (nicht getDeepText auf ganzen Container)
-        const valEl = deepQuery(ctr,
-          'lightning-formatted-name,lightning-formatted-picklist,' +
-          'lightning-formatted-text,lightning-formatted-phone,' +
-          'lightning-formatted-email,lightning-formatted-url,' +
-          '.slds-form-element__static,dd,a.textUnderline');
+        const valEl = deepQuery(root, _VAL_SEL);
+        // valEl darf nicht das Label selbst oder ein Kind des Labels sein
         if (valEl && valEl !== lbl && !lbl.contains(valEl)) {
           const v = getDeepText(valEl) || (valEl.textContent || '').trim();
           if (v && v.toLowerCase() !== lt && v.length < 200) return v.trim();
