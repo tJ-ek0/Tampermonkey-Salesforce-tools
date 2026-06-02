@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.1.7
+// @version      4.2.0
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.1.7';
+  const VERSION = '4.2.0';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -47,11 +47,20 @@
   function norm(s) { return (s || '').toString().toLowerCase(); }
   function escH(s) { return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
+  // FIX #1: Semantischer Versionsvergleich statt String-Vergleich
+  function semverLt(a, b) {
+    const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
+    for (let i = 0; i < 3; i++) { if ((pa[i]||0) !== (pb[i]||0)) return (pa[i]||0) < (pb[i]||0); }
+    return false;
+  }
+
   const PREFIXES = [';;', '//', '::', '!!', '@@'];
 
   // HTML Sanitizer (whitelist-based)
   const SAFE_TAGS = new Set(['b','i','u','a','br','p','ul','ol','li','strong','em','span']);
   const SAFE_ATTRS = { a: new Set(['href','target','title']), span: new Set(['style']) };
+  // FIX #14 (Security): Allowlist für href-Protokolle statt nur javascript:-Blocklist
+  const SAFE_PROTOCOLS = new Set(['https:', 'http:', 'mailto:', 'tel:']);
   function sanitizeHtml(html) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     function clean(node) {
@@ -63,7 +72,13 @@
         if (!SAFE_TAGS.has(tag)) { ch.replaceWith(...ch.childNodes); continue; }
         const allowed = SAFE_ATTRS[tag] || new Set();
         for (const attr of Array.from(ch.attributes)) {
-          if (!allowed.has(attr.name) || attr.value.trim().toLowerCase().startsWith('javascript:')) ch.removeAttribute(attr.name);
+          if (!allowed.has(attr.name)) { ch.removeAttribute(attr.name); continue; }
+          if (attr.name === 'href') {
+            try {
+              const proto = new URL(attr.value, location.href).protocol;
+              if (!SAFE_PROTOCOLS.has(proto)) { ch.removeAttribute(attr.name); continue; }
+            } catch { ch.removeAttribute(attr.name); continue; }
+          }
         }
         clean(ch);
       }
@@ -146,17 +161,21 @@
     } catch {}
     return SNIP_DEFAULTS.map(e => ({ ...e, id: uid() }));
   }
-  // Dirty-Flag-Saves (#26): bündelt mehrere Saves in einen Schreibvorgang
-  let _snipDirty = false, _rulesDirty = false;
+  // FIX #10: Dirty-Flag-Saves — verhindert mehrfache requestIdleCallback-Registrierung
+  let _snipDirty = false, _snipFlushScheduled = false, _rulesDirty = false;
   function saveSnippets(immediate=false) {
-    if (immediate) { localStorage.setItem(LS_SNIP, JSON.stringify(SNIPPETS)); _snipDirty=false; return; }
+    if (immediate) { localStorage.setItem(LS_SNIP, JSON.stringify(SNIPPETS)); _snipDirty=false; _snipFlushScheduled=false; return; }
     _snipDirty = true;
-    const flush = () => { if (_snipDirty) { localStorage.setItem(LS_SNIP, JSON.stringify(SNIPPETS)); _snipDirty=false; } };
+    if (_snipFlushScheduled) return;
+    _snipFlushScheduled = true;
+    const flush = () => { if (_snipDirty) { localStorage.setItem(LS_SNIP, JSON.stringify(SNIPPETS)); _snipDirty=false; } _snipFlushScheduled=false; };
     if ('requestIdleCallback' in window) requestIdleCallback(flush, {timeout:500});
     else setTimeout(flush, 500);
   }
-  function loadPrefix() { return localStorage.getItem(LS_PREFIX) || ';;'; }
-  function savePrefix(p) { localStorage.setItem(LS_PREFIX, p); }
+  // FIX #16: loadPrefix/loadDefaultLang cachen — vermeidet localStorage-Lesen bei jedem Tastendruck
+  let _cachedPrefix = null;
+  function loadPrefix() { if (_cachedPrefix === null) _cachedPrefix = localStorage.getItem(LS_PREFIX) || ';;'; return _cachedPrefix; }
+  function savePrefix(p) { _cachedPrefix = p; localStorage.setItem(LS_PREFIX, p); }
   function loadUname() { return localStorage.getItem(LS_UNAME) || ''; }
   function saveUname(n) { localStorage.setItem(LS_UNAME, n); }
 
@@ -173,8 +192,10 @@
   function saveWrapAnrede(t) { localStorage.setItem(LS_WRAP_ANR, t); }
   function loadWrapSignatur() { return localStorage.getItem(LS_WRAP_SIG) || 'sig'; }
   function saveWrapSignatur(t) { localStorage.setItem(LS_WRAP_SIG, t); }
-  function loadDefaultLang() { return localStorage.getItem(LS_DEF_LANG) || 'de'; }
-  function saveDefaultLang(lang) { localStorage.setItem(LS_DEF_LANG, lang); }
+  // FIX #7: loadDefaultLang cachen
+  let _cachedLang = null;
+  function loadDefaultLang() { if (_cachedLang === null) _cachedLang = localStorage.getItem(LS_DEF_LANG) || 'de'; return _cachedLang; }
+  function saveDefaultLang(lang) { _cachedLang = lang; localStorage.setItem(LS_DEF_LANG, lang); }
 
   // ===== i18n: Übersetzungswörterbuch =====
   // Das Skript wird in Deutsch geschrieben; bei Sprache=en werden die DE-Strings nach EN übersetzt.
@@ -298,7 +319,7 @@
   // ===== Datenmigration (#18) =====
   function runMigrations() {
     const ver = localStorage.getItem(LS_DATA_VER) || '0';
-    if (ver < '4.9.0') {
+    if (semverLt(ver, '4.9.0')) { // FIX #1: semantischer Versionsvergleich
       // Sicherstellen dass alle Snippets usageCount + bodyEn haben
       try {
         const raw = localStorage.getItem(LS_SNIP);
@@ -342,7 +363,7 @@
     localStorage.setItem(LS_SNIP_VER, CURRENT_VER);
   })();
 
-  saveSnippets();
+  // FIX #3: Doppeltes saveSnippets() entfernt — mergeDefaultSnippets() speichert bereits wenn nötig
 
   // ===== Recently Used (#15) =====
   function loadRecent() { try { const r = localStorage.getItem(LS_RECENT); return r ? JSON.parse(r) : []; } catch { return []; } }
@@ -378,29 +399,29 @@
   }
 
   // ===== Placeholder resolution =====
-  // Shadow-DOM-durchdringender querySelector/querySelectorAll
+  // FIX #2: Shadow-DOM-Traversal per iterativer Queue statt O(n²) querySelectorAll('*')
   // SF Lightning rendert ALLES in Shadow Roots → normales querySelector findet nichts.
+  function _collectShadowRoots(root) {
+    const roots = [root];
+    try {
+      const withShadow = root.querySelectorAll ? Array.from(root.querySelectorAll('*')).filter(e => e.shadowRoot) : [];
+      for (const el of withShadow) roots.push(..._collectShadowRoots(el.shadowRoot));
+    } catch {}
+    return roots;
+  }
+
   function deepQueryAll(root, selector) {
     const results = [];
-    try {
-      results.push(...Array.from(root.querySelectorAll ? root.querySelectorAll(selector) : []));
-      const all = root.querySelectorAll ? Array.from(root.querySelectorAll('*')) : [];
-      for (const el of all) {
-        if (el.shadowRoot) results.push(...deepQueryAll(el.shadowRoot, selector));
-      }
-    } catch {}
+    for (const r of _collectShadowRoots(root)) {
+      try { if (r.querySelectorAll) results.push(...r.querySelectorAll(selector)); } catch {}
+    }
     return results;
   }
 
   function deepQuery(root, selector) {
-    try {
-      const r = root.querySelector ? root.querySelector(selector) : null;
-      if (r) return r;
-      const all = root.querySelectorAll ? Array.from(root.querySelectorAll('*')) : [];
-      for (const el of all) {
-        if (el.shadowRoot) { const r2 = deepQuery(el.shadowRoot, selector); if (r2) return r2; }
-      }
-    } catch {}
+    for (const r of _collectShadowRoots(root)) {
+      try { const found = r.querySelector ? r.querySelector(selector) : null; if (found) return found; } catch {}
+    }
     return null;
   }
 
@@ -669,31 +690,8 @@
   // Nutzt field-name-Attribute (präzise) mit Label-Fallback.
   function readContactFromDetailsSection() {
     const section = findContactDetailsSection();
-    if (!section) {
-      // Diagnose: welche Titel wurden überhaupt gefunden?
-      const titleSelectors = 'h1,h2,h3,h4,h5,header,.slds-card__header-title,.slds-section__title,span.title,lightning-formatted-text';
-      const allTitles = deepQueryAll(document, titleSelectors)
-        .filter(t => !isInsideNavigation(t))
-        .map(t => (t.textContent||'').trim())
-        .filter(t => t && t.length > 2 && t.length < 80)
-        .slice(0, 20);
-      console.warn('[SFHL] Contact-Details-Section nicht gefunden. Gefundene Titel:', allTitles);
-      return null;
-    }
-
-    // Diagnose: welche output-fields liegen in der Section?
-    const allFields = deepQueryAll(section, 'lightning-output-field[field-name]');
-    const fieldNames = allFields.map(el => el.getAttribute('field-name'));
-    // Ohne [field-name] Filter — zeigt ob output-fields überhaupt da sind
-    const allFieldsNoAttr = deepQueryAll(section, 'lightning-output-field');
-    // Direkte Kinder der Section (Light DOM)
-    const directChildren = Array.from(section.children || []).map(el => el.tagName).slice(0, 15);
-    // Shadow Root des Section-Elements selbst
-    const sectionShadowChildren = section.shadowRoot
-      ? Array.from(section.shadowRoot.querySelectorAll('*')).slice(0, 20).map(el => el.tagName + (el.getAttribute('field-name') ? '[fn=' + el.getAttribute('field-name') + ']' : ''))
-      : [];
-    console.log('[SFHL] Section tag:', section.tagName, 'kinder:', directChildren, 'shadow-kinder:', sectionShadowChildren);
-    console.log('[SFHL] output-fields (mit field-name):', fieldNames, '| ohne Attribut:', allFieldsNoAttr.length);
+    // FIX #4: Diagnose-console.log/warn aus Produktionscode entfernt
+    if (!section) return null;
 
     // Methode 1: field-name Attribut (API-Feldname, zuverlässig)
     const nameRaw = readOutputFieldValue(section, 'Name');
@@ -702,14 +700,12 @@
     const ln      = readOutputFieldValue(section, 'LastName');
     const phone   = readOutputFieldValue(section, 'Phone');
     const mob     = readOutputFieldValue(section, 'MobilePhone');
-    console.log('[SFHL] field-name Werte:', {nameRaw, sal, fn, ln, phone, mob});
 
     // Methode 2: Label-Fallback wenn field-name nicht gefunden
     const salFb   = sal   || readFieldFromContainer(section, ['anrede','salutation']);
     const fnFb    = fn    || readFieldFromContainer(section, ['vorname','first name']);
     const lnFb    = ln    || readFieldFromContainer(section, ['nachname','last name']);
     const nameFb  = nameRaw || readFieldFromContainer(section, ['name','kontaktname','contact name']);
-    console.log('[SFHL] Label-Fallback Werte:', {salFb, fnFb, lnFb, nameFb});
 
     if (!nameFb && !lnFb && !salFb) {
       console.warn('[SFHL] Section gefunden aber alle Felder leer — kein sinnvoller Wert lesbar');
@@ -958,7 +954,7 @@
     const _src       = _api || _section;
     const kontakt    = (_src && _src.Name) || readContactName();
     const _parsed    = !_src && kontakt ? parseContactName(kontakt) : null;
-    if (!_api) console.log('[SFHL] Quelle:', _section ? 'Contact-Details-Section' : 'DOM-Parser', 'kontakt="' + kontakt + '"', _section || _parsed);
+    // FIX #4: console.log entfernt
     const anrede     = (_src && _src.Salutation)   || readSFField(['anrede','salutation']) || (_parsed?.salutation || '');
     const nachname   = (_src && _src.LastName)     || readSFField(['nachname','last name']) || (_parsed?.lastName || '');
     const vorname    = (_src && _src.FirstName)    || (_parsed?.firstName || (kontakt ? kontakt.split(' ').slice(0, -1).join(' ') : ''));
@@ -1874,7 +1870,8 @@
     const hdr = e.target.closest('.sfhl-help-hdr');
     if (hdr) { const sec = hdr.closest('.sfhl-help-sec'); if (sec) sec.classList.toggle('sfhl-open'); }
   });
-  document.addEventListener('click', e => { if (!e.target.closest('.sfhl-palette') && !e.target.closest('.sfhl-sw')) closePalette(); });
+  // FIX #18: Kurzschluss wenn Palette nicht sichtbar — vermeidet closest()-Traversal bei jedem Klick
+  document.addEventListener('click', e => { if (!paletteEl.classList.contains('vis')) return; if (!e.target.closest('.sfhl-palette') && !e.target.closest('.sfhl-sw')) closePalette(); });
   panel.addEventListener('change', e => { if (e.target.matches('input[type="color"]')) { const sw = e.target.closest('.sfhl-sw'); if (sw) applyColor(sw, e.target.value); } });
   panel.addEventListener('input', e => { if (e.target.matches('input[type="color"]')) { const sw = e.target.closest('.sfhl-sw'); if (sw) { const f = sw.querySelector('.sfhl-sw-fill'); if (f) f.style.background = e.target.value; } } });
   function applyColor(sw, color) {
@@ -1967,14 +1964,14 @@
   }
 
   // Build a single rule row DOM element
-  function makeRuleRow(item) {
+  // FIX #12: enabledWithTerm als Parameter — kein O(n) RULES.filter mehr pro Zeile
+  function makeRuleRow(item, enabledWithTerm) {
     const row = document.createElement('div');
     row.className = 'sfhl-row' + (item.enabled ? '' : ' disabled');
     row.dataset.ruleId = item.id; row.dataset.folderId = item.folder || ''; row.draggable = true; row.style.borderLeftColor = item.color;
     const eye = item.enabled
       ? '<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
       : '<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
-    const enabledWithTerm = RULES.filter(r => r.enabled && r.term);
     const prio = (item.enabled && item.term) ? enabledWithTerm.indexOf(item) + 1 : 0;
     const prioBadge = prio > 0
       ? `<div class="sfhl-rule-prio has-prio" title="Priorit\u00e4t ${prio}">#${prio}</div>`
@@ -1995,6 +1992,8 @@
       listEl.innerHTML = `<div class="sfhl-empty"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><p class="sfhl-empty-title">Keine Treffer</p><p class="sfhl-empty-sub">Kein Begriff passt zu „${escH(ruleSearch)}".</p></div>`;
       updateBadges(); return;
     }
+    // FIX #12: einmalig berechnen, nicht O(n) pro Zeile
+    const enabledWithTerm = RULES.filter(r => r.enabled && r.term);
     const ungrouped = filtered.filter(r => !r.folder);
 
     // Ungrouped section header (only when folders exist)
@@ -2005,7 +2004,7 @@
       listEl.appendChild(uh);
     }
     const ub = document.createElement('div'); ub.className = 'sfhl-ungrouped-body'; ub.dataset.folderId = '';
-    for (const item of ungrouped) ub.appendChild(makeRuleRow(item));
+    for (const item of ungrouped) ub.appendChild(makeRuleRow(item, enabledWithTerm));
     listEl.appendChild(ub);
 
     // Folders
@@ -2020,7 +2019,7 @@
       const fb = document.createElement('div');
       fb.className = 'sfhl-folder-body' + (isCollapsed ? ' collapsed' : '');
       fb.dataset.folderId = folder.id;
-      for (const item of fRules) fb.appendChild(makeRuleRow(item));
+      for (const item of fRules) fb.appendChild(makeRuleRow(item, enabledWithTerm));
       listEl.appendChild(fb);
     }
     updateBadges();
@@ -2139,8 +2138,9 @@
       updateBadges(); updateCatDatalist(); return;
     }
     // Suche auch nach Kategorie (#12)
+    // FIX #20: body-Suche auf ersten 500 Zeichen begrenzt — verhindert massives String-Normalisieren bei jedem Tastendruck
     let filtered = snipSearchTerm
-      ? SNIPPETS.filter(s => norm(s.trigger).includes(snipSearchTerm) || norm(s.label).includes(snipSearchTerm) || norm(s.category).includes(snipSearchTerm) || norm(s.body).includes(snipSearchTerm))
+      ? SNIPPETS.filter(s => norm(s.trigger).includes(snipSearchTerm) || norm(s.label).includes(snipSearchTerm) || norm(s.category).includes(snipSearchTerm) || norm(s.body.slice(0,500)).includes(snipSearchTerm))
       : SNIPPETS;
     if (activeCatFilter) filtered = filtered.filter(s => (s.category || '(Keine Kategorie)') === activeCatFilter);
 
@@ -2466,7 +2466,9 @@
     document.execCommand('insertText', false, code);
     phPicker.classList.remove('vis');
   });
+  // FIX #18: Guard wenn phPicker nicht sichtbar
   document.addEventListener('click', e => {
+    if (!phPicker.classList.contains('vis')) return;
     if (!e.target.closest('.sfhl-ph-picker') && !e.target.closest('.sfhl-rtb-placeholder')) {
       phPicker.classList.remove('vis');
     }
@@ -2520,9 +2522,11 @@
   });
 
   // Update toolbar active states
-  $('.sfhl-rte-body').addEventListener('keyup', () => { updateRtbState(); updateCounter(); });
+  // FIX #19: updateCounter debounced — htmlToPlain() nicht bei jedem Tastendruck
+  const updateCounterDebounced = debounce(updateCounter, 200);
+  $('.sfhl-rte-body').addEventListener('keyup', () => { updateRtbState(); updateCounterDebounced(); });
   $('.sfhl-rte-body').addEventListener('mouseup', updateRtbState);
-  $('.sfhl-rte-body').addEventListener('input', updateCounter);
+  $('.sfhl-rte-body').addEventListener('input', updateCounterDebounced);
   // Paste-Handler: reinigt eingefügten Text von überflüssigen Zeilenumbrüchen
   $('.sfhl-rte-body').addEventListener('paste', e => {
     e.preventDefault();
@@ -2593,8 +2597,10 @@
     saveSnippets(); renderSnippets();
     snipEditor.classList.remove('vis');
     panel.querySelector('[data-tab="snippets"] .sfhl-add-bar').style.display = 'flex';
+    // FIX #11: wasEditing vor dem Nullsetzen merken — sonst zeigt Toast immer 'erstellt'
+    const wasEditing = !!editingSnipId;
     editingSnipId = null;
-    toast(editingSnipId ? 'Snippet aktualisiert' : 'Snippet erstellt', 'success');
+    toast(wasEditing ? 'Snippet aktualisiert' : 'Snippet erstellt', 'success');
   };
 
   $('.sfhl-ed-delete').onclick = () => {
@@ -2735,7 +2741,7 @@
     let node = range.startContainer;
     if (node.nodeType !== 3) {
       try {
-        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        const walker = (node.ownerDocument || document).createTreeWalker(node, NodeFilter.SHOW_TEXT); // FIX #13: richtiger Dokument-Kontext für iframe-Elemente
         const tn = walker.nextNode();
         if (!tn) return null;
         node = tn;
@@ -2821,7 +2827,7 @@
         }
       }
 
-      if (true) { // immer HTML-Einfüge-Pfad für contenteditable
+      // FIX #15: if(true) war tote Bedingung — direkt ausführen
         let html = resolveLinks(resolved, true);
         html = sanitizeHtml(html.replace(/\n/g, '<br>')).replace(cursorMarker, '');
         if (inIframe) {
@@ -2906,8 +2912,7 @@
           }
         }
       }
-    }
-    closeDropdown();
+    closeDropdown(); // FIX #15: orphaned } from if(true) removed
   }
 
   function showDropdown(el, triggerInfo) {
@@ -3255,13 +3260,21 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     {name:'xpath:short',type:'xpath',sel:'//lst-list-view-manager//table//tbody//tr'},
     {name:'xpath:fallback',type:'xpath',sel:'//lst-list-view-manager//div//tr | //lst-list-view-manager//tr'},
   ];
-  let _lrs = '';
+  // FIX #17: Bekannte funktionierende Strategie cachen — vermeidet wiederholtes Probieren aller Strategien
+  let _lrs = '', _cachedRowStrategy = null;
+  function _tryRowStrategy(s) {
+    let rows;
+    if(s.type==='css'){rows=Array.from(document.querySelectorAll(s.sel));}else{const snap=document.evaluate(s.sel,document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);rows=[];for(let i=0;i<snap.snapshotLength;i++)rows.push(snap.snapshotItem(i));}
+    return rows.filter(tr => tr.querySelector('td'));
+  }
   function getRows() {
+    if (_cachedRowStrategy) {
+      try { const rows = _tryRowStrategy(_cachedRowStrategy); if(rows.length>0){_lrs=_cachedRowStrategy.name;return rows;} } catch {}
+      _cachedRowStrategy = null;
+    }
     for (const s of ROW_STRATEGIES) {
-      try { let rows; if(s.type==='css'){rows=Array.from(document.querySelectorAll(s.sel));}else{const snap=document.evaluate(s.sel,document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);rows=[];for(let i=0;i<snap.snapshotLength;i++)rows.push(snap.snapshotItem(i));}
-        rows = rows.filter(tr => tr.querySelector('td'));
-        if(rows.length>0){_lrs=s.name;return rows;}
-      } catch {} }
+      try { const rows = _tryRowStrategy(s); if(rows.length>0){_lrs=s.name;_cachedRowStrategy=s;return rows;} } catch {}
+    }
     return [];
   }
   const REFRESH_STRATEGIES = [
@@ -3277,7 +3290,9 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     return null;
   }
   // ===== Advanced Rule Matching (UND/NICHT/Regex) =====
+  // FIX #8: Regex-Cache auf 200 Einträge begrenzt — verhindert unbegrenztes Speicherwachstum
   const _regexCache = new Map();
+  const _REGEX_CACHE_MAX = 200;
   function matchesSingleCondition(lowTxt, cond) {
     cond = cond.trim();
     if (!cond) return true;
@@ -3289,6 +3304,7 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     if (rxMatch) {
       const key = rxMatch[1] + '/' + rxMatch[2];
       if (!_regexCache.has(key)) {
+        if (_regexCache.size >= _REGEX_CACHE_MAX) _regexCache.delete(_regexCache.keys().next().value); // FIX #8: LRU eviction
         try { _regexCache.set(key, new RegExp(rxMatch[1], rxMatch[2])); }
         catch { _regexCache.set(key, null); }
       }
@@ -3314,8 +3330,9 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   function markRow(row,m) { row.classList.add('tm-sfhl-mark'); row.style.setProperty('--sfhl-bg',m.color,'important'); row.dataset.sfhlRule=m.id; }
   function unmarkRow(row) { row.classList.remove('tm-sfhl-mark','sfhl-new-match'); row.style.removeProperty('--sfhl-bg'); delete row.dataset.sfhlRule; }
   function updateHighlightCount() { const n=document.querySelectorAll('.tm-sfhl-mark').length;const c=triggerBtn.querySelector('.sfhl-count');if(c)c.textContent=n>0?`${n} markiert`:''; }
-  function highlightRows(full=false) { const rows=getRows();if(rows.length===0)return false;for(const row of rows){if(full)unmarkRow(row);const cells=row.querySelectorAll('td');let txt='';for(const c of cells)txt+=' '+(c.innerText||c.textContent||'');const m=bestMatch(txt);if(m)markRow(row,m);else if(full)unmarkRow(row);}updateHighlightCount();return true; }
-  function snapshotMarked() { const set=new Set();document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||'');set.add(t);});return set; }
+  // FIX #6: innerText → textContent — innerText triggert Layout-Reflow, textContent nicht
+  function highlightRows(full=false) { const rows=getRows();if(rows.length===0)return false;for(const row of rows){if(full)unmarkRow(row);const cells=row.querySelectorAll('td');let txt='';for(const c of cells)txt+=' '+(c.textContent||'');const m=bestMatch(txt);if(m)markRow(row,m);else if(full)unmarkRow(row);}updateHighlightCount();return true; }
+  function snapshotMarked() { const set=new Set();document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.textContent||'');set.add(t);});return set; } // FIX #6
   function highlightAndBlink(snap) { highlightRows(true);if(!snap)return;document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||'');if(!snap.has(t)){r.classList.add('sfhl-new-match');setTimeout(()=>r.classList.remove('sfhl-new-match'),3000);}}); }
 
   // ===== Visibility =====
@@ -3325,9 +3342,10 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   }
   function updateVis() { triggerBtn.style.display = 'inline-flex'; }
   updateVis();
+  // FIX #5: Cache-Invalidierung in pushState + popstate integriert (statt 1s-Polling)
   const origPush = history.pushState;
-  history.pushState = function() { const r=origPush.apply(this,arguments);setTimeout(()=>{updateVis();if(isCaseListPage())highlightRows(true);},100);setTimeout(restartRefresh,500);return r; };
-  window.addEventListener('popstate', () => { setTimeout(()=>{updateVis();if(isCaseListPage())highlightRows(true);},100);setTimeout(restartRefresh,500); });
+  history.pushState = function() { const r=origPush.apply(this,arguments);_contactApiCache=null;_contactApiCacheId=null;setTimeout(()=>{updateVis();if(isCaseListPage())highlightRows(true);},100);setTimeout(restartRefresh,500);setTimeout(prefetchContactApi,1500);return r; };
+  window.addEventListener('popstate', () => { _contactApiCache=null;_contactApiCacheId=null;setTimeout(()=>{updateVis();if(isCaseListPage())highlightRows(true);},100);setTimeout(restartRefresh,500);setTimeout(prefetchContactApi,1500); });
 
   // ===== Auto-Refresh =====
   let cdId=null,rfId=null,rfObs=null,plId=null,nextAt=null;
@@ -3364,22 +3382,14 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     setTimeout(prefetchContactApi, 1500);
   });
 
-  // SPA-Navigation in Salesforce Lightning: URL ändert sich ohne Page-Reload
-  let _lastUrl = location.href;
-  setInterval(() => {
-    if (location.href !== _lastUrl) {
-      _lastUrl = location.href;
-      _contactApiCache = null;
-      _contactApiCacheId = null;
-      setTimeout(prefetchContactApi, 1500);
-    }
-  }, 1000);
+  // FIX #5: URL-Polling entfernt — pushState-Override + popstate decken SPA-Navigation bereits ab
 
   // ===== Triggers =====
   const rescanSoon = debounce((full=false) => { if(isCaseListPage()) highlightRows(full); }, 80);
   (function kick(){let tries=0;const k=setInterval(()=>{if(!isCaseListPage()){clearInterval(k);return;}if(highlightRows())clearInterval(k);if(++tries>120)clearInterval(k);},200);})();
   if(document.body){const obs=new MutationObserver(muts=>{for(const mu of muts){if(mu.addedNodes?.length){for(const n of mu.addedNodes){if(n instanceof Element&&(n.matches?.('tr,table')||n.querySelector?.('tr,table'))){rescanSoon(false);return;}}}if(mu.type==='characterData'){rescanSoon(false);return;}}});obs.observe(document.body,{childList:true,subtree:true,characterData:true});}
-  setInterval(() => { tryAttachTinyMCE(); periodicScan(); if (isCaseListPage()) highlightRows(); }, 5000);
+  // FIX #9: highlightRows() aus 5s-Interval entfernt — MutationObserver triggert es bereits
+  setInterval(() => { tryAttachTinyMCE(); periodicScan(); }, 5000);
 
   console.log('[SFHL] Init complete');
 })();
