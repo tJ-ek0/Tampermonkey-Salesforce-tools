@@ -3389,15 +3389,8 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   (function kick(){let tries=0;const k=setInterval(()=>{if(!isCaseListPage()){clearInterval(k);return;}if(highlightRows())clearInterval(k);if(++tries>120)clearInterval(k);},200);})();
   if(document.body){const obs=new MutationObserver(muts=>{for(const mu of muts){if(mu.addedNodes?.length){for(const n of mu.addedNodes){if(n instanceof Element&&(n.matches?.('tr,table')||n.querySelector?.('tr,table'))){rescanSoon(false);return;}}}if(mu.type==='characterData'){rescanSoon(false);return;}}});obs.observe(document.body,{childList:true,subtree:true,characterData:true});}
   // Periodic fallback: MutationObserver greift nicht über SF native Shadow DOM Boundaries.
-  // highlightRows() nur wenn Zeilen vorhanden aber noch keine markiert (günstige Prüfung).
-  setInterval(() => {
-    tryAttachTinyMCE();
-    periodicScan();
-    if (isCaseListPage()) {
-      const rows = getRows();
-      if (rows.length > 0 && !document.querySelector('.tm-sfhl-mark')) highlightRows(true);
-    }
-  }, 5000);
+  // highlightRows(false) markiert neue Zeilen nach, ohne bereits korrekte zu entfernen.
+  setInterval(() => { tryAttachTinyMCE(); periodicScan(); if (isCaseListPage()) highlightRows(false); }, 5000);
 
   console.log('[SFHL] Init complete');
 })();
