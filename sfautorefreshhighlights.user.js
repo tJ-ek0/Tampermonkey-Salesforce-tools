@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.6.1
+// @version      4.6.2
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,11 +19,19 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.6.1';
+  const VERSION = '4.6.2';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
   const CHANGELOG = {
+    '4.6.2': {
+      de: [
+        'Doku-Lookup erkennt mehr Codes: auch in Eingabefeldern markiert, mit Rand-Klammern/unsichtbaren Zeichen, sowie Ordercodes mit „+" (z. B. FMR10B-…+Z1).',
+      ],
+      en: [
+        'Doc lookup detects more codes: also when selected inside input fields, with surrounding brackets/invisible characters, and order codes containing “+” (e.g. FMR10B-…+Z1).',
+      ],
+    },
     '4.6.1': {
       de: [
         'Doku-Lookup: Seriennummern werden jetzt zuverlässig erkannt (vorher teils als Produkt-Root → falsche Links). Das Popup zeigt die erkannte Gruppe zuerst; alle anderen Typen lassen sich über „▸ Andere Typen" aufklappen.',
@@ -3982,7 +3990,7 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   function detectCodeType(s){
     const t=(s||'').trim();
     if(!t||t.length<3||t.length>40||/\s/.test(t)) return null;
-    if(/^[A-Za-z0-9]{2,}-[A-Za-z0-9.\/]{2,}$/.test(t) && /[A-Za-z]/.test(t)) return 'order'; // RSG30-A1A3ABA1
+    if(/^[A-Za-z0-9]{2,}-[A-Za-z0-9.\/+]{2,}$/.test(t) && /[A-Za-z]/.test(t)) return 'order'; // RSG30-A1A3ABA1, FMR10B-AAAB…+Z1
     if(/^\d{8,12}$/.test(t)) return 'auftrag';                                               // 3800345039
     if(/^[A-Za-z0-9]+$/.test(t) && /[A-Za-z]/.test(t) && /\d/.test(t)) {
       return t.length >= 9 ? 'serial' : 'root';  // lang+alphanum = Seriennr (MC023616000), kurz = Produkt-Root (FMR60B)
@@ -4033,14 +4041,26 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     if(r.bottom>window.innerHeight-8) pop.style.top=Math.max(8, y-r.height-16)+'px';
   }
 
+  function getSelectionText(target){
+    // v4.6.2: Auswahl in <input>/<textarea> liefert window.getSelection() NICHT —
+    // dort direkt aus dem Feld lesen.
+    const ae = target;
+    if(ae && (ae.tagName==='INPUT'||ae.tagName==='TEXTAREA') && typeof ae.selectionStart==='number' && ae.selectionEnd>ae.selectionStart){
+      return String(ae.value||'').substring(ae.selectionStart, ae.selectionEnd);
+    }
+    const sel=window.getSelection();
+    return sel ? sel.toString() : '';
+  }
   document.addEventListener('mouseup', e=>{
     if(e.target.closest && e.target.closest('.sfhl-panel,.sfhl-sel-btn,.sfhl-doku-pop,.sfhl-trigger')) return;
     setTimeout(()=>{ // Selektion ist erst nach dem mouseup final
-      const sel=window.getSelection();
-      const t=(sel?sel.toString():'').trim().replace(/\s+/g,' ');
+      // unsichtbare Zeichen entfernen (Zero-Width, NBSP) und Whitespace normalisieren
+      const t=getSelectionText(e.target).replace(/[​-‏﻿ ]/g,' ').trim().replace(/\s+/g,' ');
       if(t.length<2||t.length>80){ hideSelButton(); return; }
-      const ct = loadDokuOn() ? detectCodeType(t) : null;
-      if(ct){ showSelButton(e.pageX+6, e.pageY+10, '📄 Doku-Links', '„'+t+'" — Dokumentations-Links öffnen', ()=>showDokuPopup(e.pageX+6, e.pageY+10, t, ct)); return; }
+      // für die Code-Erkennung Rand-Satzzeichen/Klammern abstreifen: „(FMR10B)" → „FMR10B"
+      const code=t.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g,'');
+      const ct = loadDokuOn() ? detectCodeType(code) : null;
+      if(ct){ showSelButton(e.pageX+6, e.pageY+10, '📄 Doku-Links', '„'+code+'" — Dokumentations-Links öffnen', ()=>showDokuPopup(e.pageX+6, e.pageY+10, code, ct)); return; }
       if(loadSelRuleOn() && isCaseListPage()){ showSelButton(e.pageX+6, e.pageY+10, '➕ Regel aus Auswahl', '„'+t+'" als Markierungs-Regel anlegen', ()=>createRuleFromSelection(t)); return; }
       hideSelButton();
     },10);
