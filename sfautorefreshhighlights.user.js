@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.6.2
+// @version      4.6.3
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,11 +19,19 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.6.2';
+  const VERSION = '4.6.3';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
   const CHANGELOG = {
+    '4.6.3': {
+      de: [
+        'Doku-Lookup funktioniert jetzt auch für Codes, die im E-Mail-Editor markiert werden (der läuft in einem iframe und wurde vorher von der Auswahl-Erkennung nicht erfasst).',
+      ],
+      en: [
+        'Doc lookup now also works for codes selected in the email editor (it runs in an iframe and was previously not seen by the selection detection).',
+      ],
+    },
     '4.6.2': {
       de: [
         'Doku-Lookup erkennt mehr Codes: auch in Eingabefeldern markiert, mit Rand-Klammern/unsichtbaren Zeichen, sowie Ordercodes mit „+" (z. B. FMR10B-…+Z1).',
@@ -3688,6 +3696,9 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
         if (!el && doc.body?.isContentEditable) el = doc.body;
         if (el) checkTrigger(el);
       }, true);
+      // v4.6.3: Doku-Lookup/Regel-aus-Auswahl auch für Markierungen IM iframe (E-Mail-Editor)
+      doc.addEventListener('mouseup', handleSelectionMouseup);
+      doc.addEventListener('mousedown', handleSelectionMousedown, true);
       return true;
     } catch { return false; }
   }
@@ -4041,34 +4052,46 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     if(r.bottom>window.innerHeight-8) pop.style.top=Math.max(8, y-r.height-16)+'px';
   }
 
-  function getSelectionText(target){
-    // v4.6.2: Auswahl in <input>/<textarea> liefert window.getSelection() NICHT —
-    // dort direkt aus dem Feld lesen.
+  function getSelectionText(target, win){
+    // Auswahl in <input>/<textarea> liefert getSelection() NICHT — direkt aus dem Feld lesen.
     const ae = target;
     if(ae && (ae.tagName==='INPUT'||ae.tagName==='TEXTAREA') && typeof ae.selectionStart==='number' && ae.selectionEnd>ae.selectionStart){
       return String(ae.value||'').substring(ae.selectionStart, ae.selectionEnd);
     }
-    const sel=window.getSelection();
+    const sel=(win||window).getSelection();
     return sel ? sel.toString() : '';
   }
-  document.addEventListener('mouseup', e=>{
+  function selEventCoords(e){
+    // v4.6.3: Koordinaten ins äußere Dokument umrechnen (Auswahl im E-Mail-iframe → Offset)
+    const doc = (e.target && e.target.ownerDocument) || document;
+    const win = doc.defaultView || window;
+    if(win !== window && win.frameElement){
+      const r = win.frameElement.getBoundingClientRect();
+      return { x: r.left + window.scrollX + e.clientX, y: r.top + window.scrollY + e.clientY, win };
+    }
+    return { x: e.pageX, y: e.pageY, win };
+  }
+  function handleSelectionMouseup(e){
     if(e.target.closest && e.target.closest('.sfhl-panel,.sfhl-sel-btn,.sfhl-doku-pop,.sfhl-trigger')) return;
+    const { x, y, win } = selEventCoords(e);
     setTimeout(()=>{ // Selektion ist erst nach dem mouseup final
       // unsichtbare Zeichen entfernen (Zero-Width, NBSP) und Whitespace normalisieren
-      const t=getSelectionText(e.target).replace(/[​-‏﻿ ]/g,' ').trim().replace(/\s+/g,' ');
+      const t=getSelectionText(e.target, win).replace(/[​-‏﻿ ]/g,' ').trim().replace(/\s+/g,' ');
       if(t.length<2||t.length>80){ hideSelButton(); return; }
       // für die Code-Erkennung Rand-Satzzeichen/Klammern abstreifen: „(FMR10B)" → „FMR10B"
       const code=t.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g,'');
       const ct = loadDokuOn() ? detectCodeType(code) : null;
-      if(ct){ showSelButton(e.pageX+6, e.pageY+10, '📄 Doku-Links', '„'+code+'" — Dokumentations-Links öffnen', ()=>showDokuPopup(e.pageX+6, e.pageY+10, code, ct)); return; }
-      if(loadSelRuleOn() && isCaseListPage()){ showSelButton(e.pageX+6, e.pageY+10, '➕ Regel aus Auswahl', '„'+t+'" als Markierungs-Regel anlegen', ()=>createRuleFromSelection(t)); return; }
+      if(ct){ showSelButton(x+6, y+10, '📄 Doku-Links', '„'+code+'" — Dokumentations-Links öffnen', ()=>showDokuPopup(x+6, y+10, code, ct)); return; }
+      if(loadSelRuleOn() && isCaseListPage()){ showSelButton(x+6, y+10, '➕ Regel aus Auswahl', '„'+t+'" als Markierungs-Regel anlegen', ()=>createRuleFromSelection(t)); return; }
       hideSelButton();
     },10);
-  });
-  document.addEventListener('mousedown', e=>{
+  }
+  function handleSelectionMousedown(e){
     if(_selBtn && !(e.target.closest && e.target.closest('.sfhl-sel-btn'))) hideSelButton();
     if(_dokuPop && !(e.target.closest && e.target.closest('.sfhl-doku-pop'))) hideDokuPopup();
-  }, true);
+  }
+  document.addEventListener('mouseup', handleSelectionMouseup);
+  document.addEventListener('mousedown', handleSelectionMousedown, true);
   function snapshotMarked() { const set=new Set();document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||c.textContent||'');set.add(t);});return set; }
   function highlightAndBlink(snap) {
     highlightRows(true);
