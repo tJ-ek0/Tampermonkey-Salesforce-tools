@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.5.1
+// @version      4.5.2
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,11 +19,21 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.5.1';
+  const VERSION = '4.5.2';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
   const CHANGELOG = {
+    '4.5.2': {
+      de: [
+        'Platzhalter-Verbesserung: Leere {!…}-Felder schreiben keinen rohen Merge-Code mehr in die Mail, sondern einen lesbaren [Platzhalter] zum manuellen Ausfüllen (z. B. [Seriennr.]).',
+        'Fix: {!Case.Communication_Owner__c} (Techniker) verwechselte „Kommunikationssprache" und fügte teils „Deutsch" ein — behoben.',
+      ],
+      en: [
+        'Placeholder improvement: empty {!…} fields no longer write raw merge code into the email but a readable [placeholder] to fill in manually (e.g. [Serial no.]).',
+        'Fix: {!Case.Communication_Owner__c} (technician) confused “communication language” and sometimes inserted “German” — fixed.',
+      ],
+    },
     '4.5.1': {
       de: [
         'Fix: Die Schalter in den Einstellungen (Vorschau, Ton, Benachrichtigung, Legende u. a.) ließen sich nicht per Klick umschalten — jetzt behoben.',
@@ -618,9 +628,13 @@
     return out.replace(/\s+/g, ' ').trim();
   }
 
-  function readSFField(labelTexts) {
+  function readSFField(labelTexts, excludeLabels) {
     try {
       const lowLabels = labelTexts.map(l => l.toLowerCase());
+      // v4.5.1: Labels, die NICHT matchen dürfen (z.B. "kommunikationssprache" beim
+      // Techniker-Lookup 'kommunikation' — sonst landet "Deutsch" im Snippet).
+      const lowExclude = (excludeLabels || []).map(l => l.toLowerCase());
+      const isExcluded = t => lowExclude.some(x => t === x || t.startsWith(x));
       // Erweiterte Container-Suche: auch Highlights-Panel und lightning-output-field
       const CTR_SEL  = '.slds-form-element,force-record-layout-item,records-record-layout-item,lightning-output-field,force-highlights-details-item';
       // Erweiterte Value-Suche: Picklist + Lookup explizit
@@ -636,7 +650,7 @@
           : ctr.querySelector(LBL_SEL);
         if (!lbl) continue;
         const t = (lbl.textContent || '').trim().toLowerCase();
-        if (!t) continue;
+        if (!t || isExcluded(t)) continue;
         let rank = 0;
         if (lowLabels.includes(t)) rank = 3;
         else if (lowLabels.some(l => t.startsWith(l))) rank = 2;
@@ -669,7 +683,7 @@
       const allLabels = deepQueryAll(document, 'span,dt,label,.slds-form-element__label,.slds-text-title');
       for (const lbl of allLabels) {
         const t = (lbl.textContent || '').trim().toLowerCase();
-        if (!t || t.length > 50) continue;
+        if (!t || t.length > 50 || isExcluded(t)) continue;
         if (!lowLabels.some(l => t === l || t.startsWith(l))) continue;
         const parent = lbl.parentElement;
         if (!parent) continue;
@@ -1127,7 +1141,7 @@
     const betreff    = readSubject();
     const seriennr   = readSFField(['seriennummer','serial number']);
     const arbeitsauf = readSFField(['arbeitsauftrag','work order']);
-    const techniker  = readSFField(['kommunikation','techniker','communication owner']);
+    const techniker  = readSFField(['kommunikation','techniker','communication owner'], ['kommunikationssprache']);
     const loesung    = '';
     const produkt    = readSFField(['produkt','product','device type','gerätetyp']);
     // Priorität: API > Contact-Details-Section > generisches DOM-Scraping > Namens-Parser
@@ -1159,25 +1173,28 @@
     const strasse    = readSFField(['straße','strasse','street','anschrift']);
     const ort        = readSFField(['ort','city','stadt']);
     // {!SF.MergeField} → alle via DOM aufgelöst
+    // v4.5.1: Leere {!…}-Felder NIE mehr als rohe Merge-Syntax in die Mail schreiben,
+    // sondern als lesbaren [Platzhalter]. Anrede/Nachname/Kontakt bleiben leer ('') —
+    // dafür greift das Sicherheitsnetz (Warn-Toast), '[Anrede]' o.Ä. will man nicht im Text.
     text = text
-      .replace(/\{!Case\.CaseNumber\}/gi,                    caseNum    || '{!Case.CaseNumber}')
-      .replace(/\{!Case\.Subject\}/gi,                       betreff    || '{!Case.Subject}')
-      .replace(/\{!Case\.Serial_number__c\}/gi,              seriennr   || '{!Case.Serial_number__c}')
-      .replace(/\{!Case\.Work_Order__c\}/gi,                 arbeitsauf || '{!Case.Work_Order__c}')
-      .replace(/\{!Case\.Communication_Owner__c\}/gi,        techniker  || '{!Case.Communication_Owner__c}')
-      .replace(/\{!Case\.Solution_Steps__c\}/gi,             loesung    || '{!Case.Solution_Steps__c}')
+      .replace(/\{!Case\.CaseNumber\}/gi,                    caseNum    || '[Case-Nr.]')
+      .replace(/\{!Case\.Subject\}/gi,                       betreff    || '[Betreff]')
+      .replace(/\{!Case\.Serial_number__c\}/gi,              seriennr   || '[Seriennr.]')
+      .replace(/\{!Case\.Work_Order__c\}/gi,                 arbeitsauf || '[Arbeitsauftrag]')
+      .replace(/\{!Case\.Communication_Owner__c\}/gi,        techniker  || '[Techniker]')
+      .replace(/\{!Case\.Solution_Steps__c\}/gi,             loesung    || '[Lösungstext]')
       .replace(/\{!Contact\.Salutation\}/gi,                 anrede     || '')
       .replace(/\{!Contact\.LastName\}/gi,                   nachname   || '')
       .replace(/\{!Contact\.Name\}/gi,                       kontakt    || '')
-      .replace(/\{!Contact\.PhoneFormula__c\}/gi,            telefon    || '{!Contact.PhoneFormula__c}')
-      .replace(/\{!Contact\.MobilePhone\}/gi,                mobil      || '{!Contact.MobilePhone}')
-      .replace(/\{!User\.Name\}/gi,                          loadUname()|| '{!User.Name}')
+      .replace(/\{!Contact\.PhoneFormula__c\}/gi,            telefon    || '[Telefon]')
+      .replace(/\{!Contact\.MobilePhone\}/gi,                mobil      || '[Mobil]')
+      .replace(/\{!User\.Name\}/gi,                          loadUname()|| '[Name]')
       .replace(/\{!Today\}/gi,                               dateStr)
-      .replace(/\{!Account\.Internal_Sales_Engineer__c\}/gi, vertrieb   || '{!Account.Internal_Sales_Engineer__c}')
-      .replace(/\{!Account\.SAPAccountID__c\}/gi,            kundennr   || '{!Account.SAPAccountID__c}')
-      .replace(/\{!Account\.FTXTAccountName__c\}/gi,         firma      || '{!Account.FTXTAccountName__c}')
-      .replace(/\{!Account\.Street__c\}/gi,                  strasse    || '{!Account.Street__c}')
-      .replace(/\{!Account\.City__c\}/gi,                    ort        || '{!Account.City__c}');
+      .replace(/\{!Account\.Internal_Sales_Engineer__c\}/gi, vertrieb   || '[Vertrieb ASP]')
+      .replace(/\{!Account\.SAPAccountID__c\}/gi,            kundennr   || '[Kundennr.]')
+      .replace(/\{!Account\.FTXTAccountName__c\}/gi,         firma      || '[Firma]')
+      .replace(/\{!Account\.Street__c\}/gi,                  strasse    || '[Straße]')
+      .replace(/\{!Account\.City__c\}/gi,                    ort        || '[Ort]');
 
     // Eingabe-Variablen auflösen (#45): {eingabe:Beschriftung} → fragt Nutzer
     // WICHTIG: Diese Auflösung passiert erst beim Einfügen (nicht in der Vorschau)
