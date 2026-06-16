@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.5.2
+// @version      4.5.3
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,11 +19,19 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.5.2';
+  const VERSION = '4.5.3';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
   const CHANGELOG = {
+    '4.5.3': {
+      de: [
+        'Fix für die Salesforce-Konsole mit mehreren Tabs: Snippets lesen jetzt Kontakt/Betreff/Case-Nr. nur noch aus dem aktiven Tab. Vorher konnte beim Tab-Wechsel der Name aus dem vorherigen Tab eingefügt werden (bis F5).',
+      ],
+      en: [
+        'Fix for the Salesforce console with multiple tabs: snippets now read contact/subject/case no. only from the active tab. Previously, switching tabs could insert the name from the previous tab (until F5).',
+      ],
+    },
     '4.5.2': {
       de: [
         'Platzhalter-Verbesserung: Leere {!…}-Felder schreiben keinen rohen Merge-Code mehr in die Mail, sondern einen lesbaren [Platzhalter] zum manuellen Ausfüllen (z. B. [Seriennr.]).',
@@ -645,6 +653,7 @@
       const candidates = [];
 
       for (const ctr of containers) {
+        if (!isVisibleEl(ctr)) continue; // v4.5.3: inaktive Konsolen-Tabs überspringen
         const lbl = ctr.shadowRoot
           ? deepQuery(ctr.shadowRoot, LBL_SEL)
           : ctr.querySelector(LBL_SEL);
@@ -682,6 +691,7 @@
       // Letzter Fallback: flache Label-Suche im gesamten DOM
       const allLabels = deepQueryAll(document, 'span,dt,label,.slds-form-element__label,.slds-text-title');
       for (const lbl of allLabels) {
+        if (!isVisibleEl(lbl)) continue; // v4.5.3: inaktive Konsolen-Tabs überspringen
         const t = (lbl.textContent || '').trim().toLowerCase();
         if (!t || t.length > 50 || isExcluded(t)) continue;
         if (!lowLabels.some(l => t === l || t.startsWith(l))) continue;
@@ -709,14 +719,15 @@
       // 1. Email-Betreff: ".emailMessageSubject .uiOutputText"
       const emailSubjects = document.querySelectorAll('.emailMessageSubject .uiOutputText, .emailMessageSubject span');
       for (const el of emailSubjects) {
+        if (!isVisibleEl(el)) continue; // v4.5.3: nur aktiver Konsolen-Tab
         const t = (el.textContent || '').trim();
         if (!t || t.length < 3) continue;
         const cleaned = t.replace(/^(?:RE:\s*|AW:\s*|FW:\s*|WG:\s*)*(?:Case#?\s*\d+\s*:\s*)?/i, '').trim();
         if (cleaned && cleaned.length > 2) return cleaned;
       }
-      // 2. Lookup-Link
-      const lookupLink = document.querySelector('.outputLookupContainer a.textUnderline');
-      if (lookupLink) {
+      // 2. Lookup-Link (nur sichtbarer/aktiver Tab)
+      for (const lookupLink of document.querySelectorAll('.outputLookupContainer a.textUnderline')) {
+        if (!isVisibleEl(lookupLink)) continue;
         const v = lookupLink.textContent.trim();
         if (v && v.length > 2 && v.length < 300) return v;
       }
@@ -781,6 +792,26 @@
     return false;
   }
 
+  // v4.5.3: In der Lightning-Konsole bleiben mehrere Workspace-Tabs gleichzeitig im DOM —
+  // der inaktive ist nur per CSS/aria versteckt, nicht entfernt. Ohne diesen Filter greift
+  // die Feldsuche den ERSTEN DOM-Treffer, evtl. aus einem inaktiven Tab → falscher Kontakt
+  // (z.B. Anrede aus dem vorherigen Tab). Nur sichtbare Elemente des aktiven Tabs zählen.
+  function isVisibleEl(el) {
+    try {
+      if (!el) return false;
+      // aria-hidden-Vorfahr (inaktiver Konsolen-Tab) — shadow-übergreifend hochlaufen
+      let n = el, hops = 0;
+      while (n && hops < 80) {
+        if (n.nodeType === 1 && n.getAttribute && n.getAttribute('aria-hidden') === 'true') return false;
+        n = n.parentElement || (n.getRootNode && n.getRootNode().host) || null;
+        hops++;
+      }
+      // tatsächlich gerendert? display:none / 0-Größe → keine ClientRects
+      if (el.getClientRects && el.getClientRects().length === 0) return false;
+      return true;
+    } catch { return true; }
+  }
+
   // Sucht eine Section/Karte mit Titel wie "Contact-Details" / "Kontakt-Details"
   // und liefert das Container-Element. Dort sind Salutation/LastName direkt
   // als output-fields sichtbar (page-layout-spezifisch).
@@ -792,6 +823,7 @@
       const titles = deepQueryAll(document, titleSelectors);
       for (const t of titles) {
         if (isInsideNavigation(t)) continue;
+        if (!isVisibleEl(t)) continue; // v4.5.3: nur aktiver Konsolen-Tab
         const txt = (t.textContent || '').trim();
         if (!txt || txt.length > 60) continue;
         if (!TITLE_PATTERNS.some(rx => rx.test(txt))) continue;
@@ -926,6 +958,7 @@
       //     (das ist garantiert die Contact-Lookup im Hauptdatensatz)
       const outputFields = deepQueryAll(document, 'lightning-output-field[field-name="ContactId"], records-record-layout-output-field[field-name="ContactId"]');
       for (const of_ of outputFields) {
+        if (!isVisibleEl(of_)) continue; // v4.5.3: nur aktiver Konsolen-Tab
         const link = deepQuery(of_, 'a[href*="/r/Contact/"], a[href*="/Contact/"]');
         if (link) {
           const v = (link.textContent || '').trim();
@@ -938,7 +971,7 @@
       // 1b. Contact-Link, aber NUR im Hauptdatensatz (nicht in Sidebar/Tabs/Recent Items)
       const contactLinks = deepQueryAll(document, 'a[href*="/lightning/r/Contact/"], a[href*="/r/Contact/"]');
       for (const a of contactLinks) {
-        if (isInsideNavigation(a)) continue;
+        if (isInsideNavigation(a) || !isVisibleEl(a)) continue;
         const v = (a.textContent || '').trim();
         if (isLikelyPersonName(v)) return v;
       }
@@ -946,6 +979,7 @@
       // 2. Highlights-Panel mit Kontakt-Label (Label muss exakt matchen)
       const highlights = deepQueryAll(document, 'force-highlights-details-item');
       for (const item of highlights) {
+        if (!isVisibleEl(item)) continue; // v4.5.3: nur aktiver Konsolen-Tab
         const labelEl = deepQuery(item.shadowRoot || item, '.slds-text-title, .slds-form-element__label, dt, label, p');
         if (!labelEl) continue;
         const lt = (labelEl.textContent || '').trim().toLowerCase();
@@ -957,6 +991,7 @@
       // 3. Form-Felder mit exaktem Kontakt-Label
       const containers = deepQueryAll(document, '.slds-form-element,force-record-layout-item,records-record-layout-item,lightning-output-field');
       for (const ctr of containers) {
+        if (!isVisibleEl(ctr)) continue; // v4.5.3: nur aktiver Konsolen-Tab
         const lbl = ctr.shadowRoot
           ? deepQuery(ctr.shadowRoot, '.slds-form-element__label,dt,label,span.label')
           : ctr.querySelector('.slds-form-element__label,dt,label,span.label');
@@ -1134,7 +1169,7 @@
     let caseNum = '';
     { const tm = document.title.match(/\b(\d{5,9})\b/); if (tm) caseNum = tm[1]; }
     if (!caseNum) deepQueryAll(document,'lightning-formatted-text').forEach(n=>{
-      const v=n.textContent.trim(); if(!caseNum&&/^\d{5,9}$/.test(v)) caseNum=v;
+      if(caseNum||!isVisibleEl(n))return; const v=n.textContent.trim(); if(/^\d{5,9}$/.test(v)) caseNum=v;
     });
 
     // Alle Felder via DOM-Suche (Shadow-DOM-durchdringend)
