@@ -201,13 +201,14 @@ Das Skript verarbeitet Daten ausschließlich lokal im Browser des angemeldeten B
 
 **Was das Skript tut:**
 - Liest Feldwerte aus dem Salesforce-DOM, die dem Benutzer bereits angezeigt werden (Vorgangsnummer, Kontaktname, Anrede, Telefon u. a.)
+- Ruft für die Platzhalter-Auflösung (Anrede, Nachname, Telefon) Kontaktfelder über die Salesforce-eigene UI API ab — ausschließlich same-origin innerhalb der bestehenden Benutzersitzung und nur für Datensätze, die der Benutzer ohnehin geöffnet hat und sehen darf. Diese Daten werden nur flüchtig im Arbeitsspeicher gehalten und nicht gespeichert.
 - Speichert Regeln, Snippets und Einstellungen im lokalen Browserspeicher (`localStorage`) des jeweiligen Geräts
 - Stellt Textbausteine mit aufgelösten Platzhaltern zur Verfügung
 
 **Was das Skript nicht tut:**
 - Überträgt keine Daten an externe Server oder Dritte
-- Speichert keine Daten außerhalb des lokalen Browsers
-- Greift nicht auf Salesforce-APIs oder Backend-Dienste zu
+- Speichert keine Kunden- oder Kontaktdaten dauerhaft (weder lokal noch extern)
+- Schreibt oder verändert keine Daten in Salesforce (rein lesender Zugriff)
 - Zeichnet keine Nutzerinteraktionen auf
 
 **Hinweis:** Die Nutzung des Skripts erfolgt im Rahmen der bestehenden CRM-Nutzung und der dafür geltenden betrieblichen Regelungen. Es gelten die Datenschutzrichtlinien der Endress+Hauser (Deutschland) GmbH+Co. KG sowie die Vorgaben der DSGVO.
@@ -219,7 +220,7 @@ Das Skript verarbeitet Daten ausschließlich lokal im Browser des angemeldeten B
 | Problem | Lösung |
 |---|---|
 | Skript lädt nicht | Browser neu laden (F5). Tampermonkey-Icon prüfen ob Skript aktiv |
-| Button nicht sichtbar | Skript ist nur auf Case-Listen und WorkOrder-Seiten aktiv |
+| Button nicht sichtbar | Skript läuft auf allen Lightning-Seiten (`/lightning/*`); Zeilen-Markierung und Auto-Refresh sind nur auf Case-Listen aktiv |
 | Snippet-Dropdown erscheint nicht | Prefix korrekt? Standard ist `;;`. In Einstellungen prüfen |
 | Anrede/Name leer | Feld muss im SF-Layout sichtbar sein. Seite neu laden und erneut versuchen |
 | Regeln verschwunden | localStorage gelöscht? → Export-Datei einspielen |
@@ -232,8 +233,7 @@ Das Skript verarbeitet Daten ausschließlich lokal im Browser des angemeldeten B
 ## Entwicklung
 
 **Aktive URLs (`@match`):**
-- `https://endress.lightning.force.com/lightning/o/Case/list*`
-- `https://endress.lightning.force.com/lightning/r/WorkOrder*`
+- `https://endress.lightning.force.com/lightning/*` — Snippets funktionieren damit auch auf direkt geöffneten Case-/WorkOrder-Detailseiten (Deep-Link, F5). Zeilen-Markierung und Auto-Refresh aktivieren sich nur auf Case-Listenansichten.
 
 **localStorage-Keys:**
 
@@ -250,6 +250,8 @@ Das Skript verarbeitet Daten ausschließlich lokal im Browser des angemeldeten B
 | `sfhl_default_language` | Standard-Snippetsprache (`de`/`en`) |
 | `sfhl_wrap_enabled` | Auto-Wrap ein/aus |
 | `sfhl_recent_v1` | Zuletzt verwendete Snippet-IDs |
+| `sfhl_last_export` | Zeitstempel des letzten Exports (Backup-Reminder) |
+| `sfhl_backup_hint_at` | Zeitstempel des letzten Backup-Hinweises |
 
 **Auto-Update (Tampermonkey):**
 ```

@@ -1,12 +1,11 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.2.2
+// @version      4.3.0
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
-// @match        https://endress.lightning.force.com/lightning/o/Case/list*
-// @match        https://endress.lightning.force.com/lightning/r/WorkOrder*
+// @match        https://endress.lightning.force.com/lightning/*
 // @grant        none
 // @run-at       document-end
 // @noframes
@@ -20,7 +19,7 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.2.2';
+  const VERSION = '4.3.0';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // ===== Storage Keys =====
@@ -40,12 +39,17 @@
   const LS_WRAP_ANR  = 'sfhl_wrap_anrede';     // Trigger des Anrede-Snippets
   const LS_WRAP_SIG  = 'sfhl_wrap_signatur';   // Trigger des Signatur-Snippets
   const LS_DEF_LANG  = 'sfhl_default_language'; // 'de' oder 'en'
+  const LS_LAST_EXPORT = 'sfhl_last_export';    // Timestamp des letzten Exports (Backup-Reminder)
+  const LS_BACKUP_HINT = 'sfhl_backup_hint_at'; // Timestamp des letzten Backup-Hinweises
 
   // ===== Helpers =====
   function uid() { return 'k' + Math.random().toString(36).slice(2, 10); }
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
   function norm(s) { return (s || '').toString().toLowerCase(); }
   function escH(s) { return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+  // SECURITY: Farbwerte aus localStorage/Import landen unescaped in innerHTML-Templates —
+  // nur valide Hex-Farben durchlassen, sonst Default.
+  function safeColor(c, fallback = '#ffffcc') { return /^#[0-9a-fA-F]{3,8}$/.test(String(c || '')) ? c : fallback; }
 
   // FIX #1: Semantischer Versionsvergleich statt String-Vergleich
   function semverLt(a, b) {
@@ -54,6 +58,12 @@
     return false;
   }
 
+  // Daten-Version für Migrationen + Default-Snippet-Merge (sfhl_data_version, sfhl_snip_defaults_ver).
+  // ACHTUNG: Bewusst von VERSION entkoppelt — historisch steht sie auf 4.9.0 und läuft der
+  // Skript-Version voraus. Bei neuen Migrationen oder neuen Default-Snippets HIER erhöhen
+  // (muss semver-größer als der gespeicherte Wert sein), NICHT an @version koppeln.
+  const DATA_VERSION = '4.9.0';
+
   const PREFIXES = [';;', '//', '::', '!!', '@@'];
 
   // HTML Sanitizer (whitelist-based)
@@ -61,6 +71,20 @@
   const SAFE_ATTRS = { a: new Set(['href','target','title']), span: new Set(['style']) };
   // FIX #14 (Security): Allowlist für href-Protokolle statt nur javascript:-Blocklist
   const SAFE_PROTOCOLS = new Set(['https:', 'http:', 'mailto:', 'tel:']);
+  // SECURITY: style-Attribut auf harmlose Text-Properties beschränken —
+  // verhindert url()-Exfiltration, position:fixed-Overlays etc.
+  const SAFE_STYLE_PROPS = new Set(['color','background-color','font-weight','font-style','font-size','font-family','text-decoration']);
+  function sanitizeStyle(value) {
+    return String(value).split(';').map(decl => {
+      const i = decl.indexOf(':');
+      if (i < 0) return '';
+      const prop = decl.slice(0, i).trim().toLowerCase();
+      const val  = decl.slice(i + 1).trim();
+      if (!SAFE_STYLE_PROPS.has(prop)) return '';
+      if (/url\s*\(|expression|javascript|@import/i.test(val)) return '';
+      return prop + ':' + val;
+    }).filter(Boolean).join(';');
+  }
   function sanitizeHtml(html) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     function clean(node) {
@@ -78,6 +102,11 @@
               const proto = new URL(attr.value, location.href).protocol;
               if (!SAFE_PROTOCOLS.has(proto)) { ch.removeAttribute(attr.name); continue; }
             } catch { ch.removeAttribute(attr.name); continue; }
+          }
+          if (attr.name === 'style') {
+            const cleaned = sanitizeStyle(attr.value);
+            if (cleaned) ch.setAttribute('style', cleaned);
+            else { ch.removeAttribute(attr.name); continue; }
           }
         }
         clean(ch);
@@ -112,9 +141,9 @@
   function loadRules() {
     try {
       let raw = localStorage.getItem(LS_CFG);
-      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.map(e => ({ id:e.id||uid(), term:String(e.term||''), color:e.color||'#ffffcc', enabled:e.enabled!==false, folder:e.folder||null })); }
+      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.map(e => ({ id:e.id||uid(), term:String(e.term||''), color:safeColor(e.color), enabled:e.enabled!==false, folder:e.folder||null })); }
       raw = localStorage.getItem(LS_CFG_OLD);
-      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.slice().sort((a,b)=>(b.priority||0)-(a.priority||0)).map(e=>({id:e.id||uid(),term:String(e.term||''),color:e.color||'#ffffcc',enabled:true,folder:null})); }
+      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.slice().sort((a,b)=>(b.priority||0)-(a.priority||0)).map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:true,folder:null})); }
     } catch {}
     return RULE_DEFAULTS.map(e => ({ ...e, id: uid(), folder: null }));
   }
@@ -290,6 +319,45 @@
     'bearbeiten': 'edit',
     'Keine Snippets vorhanden': 'No snippets available',
     'Keine Regeln vorhanden': 'No rules available',
+    // Toasts & Dialoge (toast() übersetzt automatisch via t())
+    'Regel hinzugefügt': 'Rule added',
+    'Gelöscht': 'Deleted',
+    'Rückgängig': 'Undo',
+    'Regel wiederhergestellt': 'Rule restored',
+    'Snippet wiederhergestellt': 'Snippet restored',
+    'Ordner erstellt': 'Folder created',
+    'Ordner gelöscht': 'Folder deleted',
+    'In Ordner verschoben': 'Moved to folder',
+    'Aus Ordner entfernt': 'Removed from folder',
+    'Reihenfolge geändert': 'Order changed',
+    'Exportiert': 'Exported',
+    'Export fehlgeschlagen': 'Export failed',
+    'Import erfolgreich': 'Import successful',
+    'Ungültiges Format': 'Invalid format',
+    'Zurückgesetzt': 'Reset done',
+    'In Zwischenablage kopiert': 'Copied to clipboard',
+    'Kopieren fehlgeschlagen': 'Copy failed',
+    'Snippet aktualisiert': 'Snippet updated',
+    'Snippet erstellt': 'Snippet created',
+    'Snippet gelöscht': 'Snippet deleted',
+    'Kopie erstellt': 'Copy created',
+    'Kategorie umbenannt': 'Category renamed',
+    '★ Favorit gesetzt': '★ Favorite set',
+    'Favorit entfernt': 'Favorite removed',
+    'Auto-Refresh an': 'Auto-refresh on',
+    'Auto-Refresh aus': 'Auto-refresh off',
+    'Auto-Wrap an': 'Auto-wrap on',
+    'Auto-Wrap aus': 'Auto-wrap off',
+    'Link kopiert! Kollege kann ihn in SF öffnen.': 'Link copied! A colleague can open it in SF.',
+    'Teilen fehlgeschlagen': 'Sharing failed',
+    'Ungültige Regex — Regel wird als einfache Textsuche behandelt': 'Invalid regex — rule is treated as plain text search',
+    'Backup-Tipp: Regeln & Snippets seit über 30 Tagen nicht exportiert': 'Backup tip: rules & snippets not exported for over 30 days',
+    'Jetzt exportieren': 'Export now',
+    'Markierungsregeln auf Standard zurücksetzen?': 'Reset highlight rules to defaults?',
+    'Snippets auf Standard zurücksetzen?': 'Reset snippets to defaults?',
+    'Alles auf Standard zurücksetzen? (Regeln + Snippets)': 'Reset everything to defaults? (rules + snippets)',
+    'Ordner löschen? Enthaltene Regeln werden in "Ohne Ordner" verschoben.': 'Delete folder? Contained rules move to "No folder".',
+    'Ordnername:': 'Folder name:',
   };
 
   function t(s) {
@@ -319,7 +387,7 @@
   // ===== Datenmigration (#18) =====
   function runMigrations() {
     const ver = localStorage.getItem(LS_DATA_VER) || '0';
-    if (semverLt(ver, '4.9.0')) { // FIX #1: semantischer Versionsvergleich
+    if (semverLt(ver, DATA_VERSION)) { // FIX #1: semantischer Versionsvergleich
       // Sicherstellen dass alle Snippets usageCount + bodyEn haben
       try {
         const raw = localStorage.getItem(LS_SNIP);
@@ -335,7 +403,7 @@
           }
         }
       } catch {}
-      localStorage.setItem(LS_DATA_VER, '4.9.0');
+      localStorage.setItem(LS_DATA_VER, DATA_VERSION);
     }
   }
   runMigrations();
@@ -347,8 +415,7 @@
   // Logik: Nur Snippets einfügen deren Trigger noch NICHT existiert.
   // Eigene Snippets und bearbeitete Defaults bleiben unberührt.
   (function mergeDefaultSnippets() {
-    const CURRENT_VER = '4.9.0';
-    if (localStorage.getItem(LS_SNIP_VER) === CURRENT_VER) return; // schon gemergt
+    if (localStorage.getItem(LS_SNIP_VER) === DATA_VERSION) return; // schon gemergt
     const existingTriggers = new Set(SNIPPETS.map(s => s.trigger.toLowerCase()));
     let added = 0;
     for (const def of SNIP_DEFAULTS) {
@@ -360,7 +427,7 @@
     if (added > 0) {
       saveSnippets();
     }
-    localStorage.setItem(LS_SNIP_VER, CURRENT_VER);
+    localStorage.setItem(LS_SNIP_VER, DATA_VERSION);
   })();
 
   // FIX #3: Doppeltes saveSnippets() entfernt — mergeDefaultSnippets() speichert bereits wenn nötig
@@ -378,11 +445,26 @@
   function saveFolders() { localStorage.setItem(LS_FOLDERS, JSON.stringify(FOLDERS)); }
   let FOLDERS = loadFolders();
 
-  function toast(msg, type='info', dur=2500) {
-    const t = document.createElement('div'); t.className = `sfhl-toast sfhl-toast--${type}`; t.textContent = msg;
-    document.documentElement.appendChild(t);
-    requestAnimationFrame(()=>requestAnimationFrame(()=>t.classList.add('vis')));
-    setTimeout(()=>{t.classList.remove('vis');setTimeout(()=>t.remove(),350);},dur);
+  // QF5: nur ein Toast gleichzeitig — schnelle Folge-Toasts ersetzen den alten statt zu stapeln.
+  // Optionales action={label,fn} rendert einen Button (z.B. "Rückgängig" nach Löschen).
+  // Statische Meldungen werden automatisch via t() übersetzt.
+  let _toastEl = null;
+  function toast(msg, type='info', dur=2500, action=null) {
+    msg = t(msg);
+    if (_toastEl) { _toastEl.remove(); _toastEl = null; }
+    const el = document.createElement('div'); el.className = `sfhl-toast sfhl-toast--${type}`; el.textContent = msg;
+    if (action && typeof action.fn === 'function') {
+      el.classList.add('has-action');
+      const btn = document.createElement('button');
+      btn.className = 'sfhl-toast-act'; btn.textContent = t(action.label || 'OK');
+      btn.onclick = () => { el.remove(); if (_toastEl === el) _toastEl = null; try { action.fn(); } catch {} };
+      el.appendChild(btn);
+      dur = Math.max(dur, 5000);
+    }
+    document.documentElement.appendChild(el);
+    _toastEl = el;
+    requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('vis')));
+    setTimeout(()=>{el.classList.remove('vis');setTimeout(()=>{el.remove();if(_toastEl===el)_toastEl=null;},350);},dur);
   }
 
 
@@ -1047,6 +1129,9 @@
     .sfhl-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(8px);padding:8px 18px;border-radius:8px;z-index:2147483647;font:500 12.5px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;pointer-events:none;opacity:0;transition:opacity .2s,transform .2s}
     .sfhl-toast.vis{opacity:1;transform:translateX(-50%) translateY(0)}
     .sfhl-toast--info{background:#1e293b;color:#e2e8f0} .sfhl-toast--success{background:#065f46;color:#d1fae5} .sfhl-toast--error{background:#991b1b;color:#fee2e2}
+    .sfhl-toast.has-action{pointer-events:auto;display:flex;align-items:center;gap:12px}
+    .sfhl-toast-act{border:1px solid rgba(255,255,255,.35);background:transparent;color:inherit;border-radius:5px;padding:2px 10px;font:600 11.5px/1.6 inherit;cursor:pointer;white-space:nowrap}
+    .sfhl-toast-act:hover{background:rgba(255,255,255,.12)}
 
     /* Trigger pill */
     .sfhl-trigger{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:none;align-items:center;gap:7px;padding:0 14px;height:36px;border-radius:99px;background:#fff;border:1px solid #e5e7eb;color:#374151;font:500 12px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;cursor:pointer;user-select:none;box-shadow:0 1px 3px rgba(0,0,0,.08),0 8px 24px rgba(0,0,0,.06);transition:box-shadow .15s,transform .15s,border-color .15s}
@@ -1289,6 +1374,8 @@
     .sfhl-empty svg{width:38px;height:38px;stroke:#d1d5db;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
     .sfhl-empty-title{font-size:13px;font-weight:600;color:#6b7280;margin:0}
     .sfhl-empty-sub{font-size:11.5px;text-align:center;line-height:1.5;max-width:210px;margin:0}
+    /* Hit count badge (Trefferstatistik) */
+    .sfhl-hits{font-size:9px;font-weight:700;color:#4f46e5;background:#eef2ff;border-radius:99px;padding:1px 5px;flex-shrink:0;cursor:default}
     /* Priority badge */
     .sfhl-rule-prio{min-width:20px;height:20px;border-radius:4px;background:#f3f4f6;color:#b0b7c3;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:monospace}
     .sfhl-row:not(.disabled) .sfhl-rule-prio.has-prio{background:#eef2ff;color:#6366f1}
@@ -1374,6 +1461,8 @@
     .sfhl-spell-lang:hover{color:#4f46e5}
     /* Footer */
     .sfhl-footer{padding:6px 16px;text-align:right;font-size:10px;color:#c4c4c4;border-top:1px solid #f3f4f6;flex-shrink:0;letter-spacing:.2px}
+    .sfhl-footer a{color:#c4c4c4;text-decoration:none;transition:color .12s}
+    .sfhl-footer a:hover{color:#6366f1}
   `;
   (document.head || document.documentElement).appendChild(styleEl);
 
@@ -1686,7 +1775,7 @@
       </div>
     </div>
 
-    <div class="sfhl-footer">v${VERSION} &nbsp;·&nbsp; Tobias Jurgan &nbsp;·&nbsp; <a href="https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools" target="_blank" rel="noopener" style="color:#c4c4c4;text-decoration:none" onmouseover="this.style.color='#6366f1'" onmouseout="this.style.color='#c4c4c4'">GitHub ↗</a> &nbsp;·&nbsp; <a href="https://opentoolkit.de" target="_blank" rel="noopener" style="color:#c4c4c4;text-decoration:none" onmouseover="this.style.color='#6366f1'" onmouseout="this.style.color='#c4c4c4'">opentoolkit.de ↗</a></div>
+    <div class="sfhl-footer">v${VERSION} &nbsp;·&nbsp; Tobias Jurgan &nbsp;·&nbsp; <a href="https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools" target="_blank" rel="noopener">GitHub ↗</a> &nbsp;·&nbsp; <a href="https://opentoolkit.de" target="_blank" rel="noopener">opentoolkit.de ↗</a></div>
   `;
   document.documentElement.appendChild(panel);
 
@@ -1812,7 +1901,8 @@
   });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closePanel(); closeDropdown(); }
-    if (e.altKey && e.key.toLowerCase() === 'r') { e.preventDefault(); panel.classList.contains('open') ? closePanel() : openPanel(); }
+    // QF3: !e.ctrlKey — sonst feuert AltGr+R (= Ctrl+Alt+R auf DE-Tastaturen) das Panel
+    if (e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'r') { e.preventDefault(); panel.classList.contains('open') ? closePanel() : openPanel(); }
   });
 
   // Resize
@@ -1834,12 +1924,12 @@
   $('.sfhl-act-import').onclick = () => { fileInput.value = ''; fileInput.click(); };
   $('.sfhl-act-reset').onclick  = () => doReset();
   $('.sfhl-act-reset-rules').onclick = () => {
-    if (!confirm('Markierungsregeln auf Standard zur\u00fccksetzen?')) return;
+    if (!confirm(t('Markierungsregeln auf Standard zur\u00fccksetzen?'))) return;
     RULES = RULE_DEFAULTS.map(e=>({...e,id:uid(),folder:null})); saveRules(); renderRules(); rescanSoon(true);
     updateBadges(); toast('Markierungen zur\u00fcckgesetzt','info');
   };
   $('.sfhl-act-reset-snips').onclick = () => {
-    if (!confirm('Snippets auf Standard zur\u00fccksetzen?')) return;
+    if (!confirm(t('Snippets auf Standard zur\u00fccksetzen?'))) return;
     SNIPPETS = SNIP_DEFAULTS.map(e=>({...e,id:uid(),favorite:!!e.favorite})); saveSnippets(); renderSnippets();
     updateBadges(); toast('Snippets zur\u00fcckgesetzt','info');
   };
@@ -1893,7 +1983,10 @@
     RULES.unshift({ id:uid(), term, color:addSw?.dataset.color||addColorEl.value||'#ffffcc', enabled:true });
     saveRules(); renderRules(); rescanSoon(true); addTermEl.value = '';
     if (addSw) { addSw.dataset.color='#e6ffe6'; const f=addSw.querySelector('.sfhl-sw-fill'); if(f) f.style.background='#e6ffe6'; } if(addColorEl) addColorEl.value='#e6ffe6';
-    addForm.classList.remove('vis'); panel.querySelector('[data-tab="rules"] .sfhl-add-bar').style.display='flex'; toast('Regel hinzugef\u00fcgt','success');
+    addForm.classList.remove('vis'); panel.querySelector('[data-tab="rules"] .sfhl-add-bar').style.display='flex';
+    // QF2: bei stillem Regex-Fehler warnen statt Erfolg zu melden (Einzeltoast-Policy)
+    if (invalidRegexIn(term).length) toast('Ung\u00fcltige Regex \u2014 Regel wird als einfache Textsuche behandelt','error',4500);
+    else toast('Regel hinzugef\u00fcgt','success');
   };
   addTermEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('.sfhl-add-save').click(); } });
   $('.sfhl-tester-toggle').onclick = () => {
@@ -1926,7 +2019,9 @@
       else                     { d = { rules: RULES, snippets: SNIPPETS, folders: FOLDERS, prefix: loadPrefix(), username: loadUname() }; name = `sfhl_export_${ds}.txt`; }
       const blob = new Blob([JSON.stringify(d,null,2)],{type:'application/json'}); const a=document.createElement('a');
       a.href=URL.createObjectURL(blob); a.download=name;
-      document.body.appendChild(a); a.click(); URL.revokeObjectURL(a.href); a.remove(); toast('Exportiert','success');
+      document.body.appendChild(a); a.click(); URL.revokeObjectURL(a.href); a.remove();
+      localStorage.setItem(LS_LAST_EXPORT, String(Date.now())); // Backup-Reminder zurücksetzen
+      toast('Exportiert','success');
     } catch { toast('Export fehlgeschlagen','error'); }
   }
   function sanitizeSnippetImport(e) {
@@ -1943,8 +2038,8 @@
     const file = ev.target.files?.[0]; if (!file) return;
     try {
       const raw = JSON.parse(await file.text());
-      if (Array.isArray(raw)) { RULES = raw.map(e=>({id:e.id||uid(),term:String(e.term||''),color:e.color||'#ffffcc',enabled:e.enabled!==false})); saveRules(); renderRules(); rescanSoon(true); toast(`${RULES.length} Regeln importiert`,'success'); return; }
-      if (raw.rules) { RULES = raw.rules.map(e=>({id:e.id||uid(),term:String(e.term||''),color:e.color||'#ffffcc',enabled:e.enabled!==false,folder:e.folder||null})); saveRules(); renderRules(); rescanSoon(true); }
+      if (Array.isArray(raw)) { RULES = raw.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false})); saveRules(); renderRules(); rescanSoon(true); toast(`${RULES.length} Regeln importiert`,'success'); return; }
+      if (raw.rules) { RULES = raw.rules.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false,folder:e.folder||null})); saveRules(); renderRules(); rescanSoon(true); }
       if (raw.folders) { FOLDERS = raw.folders.map(f=>({id:f.id||uid(),name:String(f.name||'')})); saveFolders(); }
       if (raw.snippets) {
         const valid = raw.snippets.map(e => { const s = sanitizeSnippetImport(e); return s ? { id: uid(), ...s, favorite: !!e.favorite, usageCount: Number(e.usageCount) || 0 } : null; }).filter(Boolean);
@@ -1956,16 +2051,40 @@
     } catch { toast('Ung\u00fcltiges Format','error',3500); }
   };
   function doReset() {
-    if (!confirm('Alles auf Standard zur\u00fccksetzen? (Regeln + Snippets)')) return;
+    if (!confirm(t('Alles auf Standard zur\u00fccksetzen? (Regeln + Snippets)'))) return;
     RULES = RULE_DEFAULTS.map(e=>({...e,id:uid(),folder:null})); saveRules(); renderRules(); rescanSoon(true);
     FOLDERS = []; saveFolders();
     SNIPPETS = SNIP_DEFAULTS.map(e=>({...e,id:uid(),favorite:!!e.favorite})); saveSnippets(); renderSnippets();
     updateBadges(); toast('Zur\u00fcckgesetzt','info');
   }
 
+  // Trefferstatistik: wie viele Zeilen der aktuellen Liste trifft jede Regel
+  // (unabhängig von Priorität/first-wins). 3s-Cache, damit die Regel-Suche beim Tippen
+  // nicht pro Tastendruck O(Regeln × Zeilen) rechnet.
+  let _hitCache = null, _hitCacheAt = 0;
+  function computeRuleHits() {
+    if (Date.now() - _hitCacheAt < 3000) return _hitCache;
+    _hitCacheAt = Date.now(); _hitCache = null;
+    try {
+      if (!isCaseListPage()) return null;
+      const rows = getRows();
+      if (!rows.length) return null;
+      const texts = rows.map(row => { const cells = row.querySelectorAll('td'); let t2 = ''; for (const c of cells) t2 += ' ' + (c.innerText || c.textContent || ''); return t2; });
+      const map = new Map();
+      for (const r of RULES) {
+        if (!r.enabled || !r.term) continue;
+        let n = 0;
+        for (const tx of texts) if (matchesRule(tx, r.term)) n++;
+        map.set(r.id, n);
+      }
+      _hitCache = map;
+    } catch {}
+    return _hitCache;
+  }
+
   // Build a single rule row DOM element
   // FIX #12: enabledWithTerm als Parameter — kein O(n) RULES.filter mehr pro Zeile
-  function makeRuleRow(item, enabledWithTerm) {
+  function makeRuleRow(item, enabledWithTerm, hitMap) {
     const row = document.createElement('div');
     row.className = 'sfhl-row' + (item.enabled ? '' : ' disabled');
     row.dataset.ruleId = item.id; row.dataset.folderId = item.folder || ''; row.draggable = true; row.style.borderLeftColor = item.color;
@@ -1976,7 +2095,10 @@
     const prioBadge = prio > 0
       ? `<div class="sfhl-rule-prio has-prio" title="Priorit\u00e4t ${prio}">#${prio}</div>`
       : `<div class="sfhl-rule-prio" title="Inaktiv">\u2013</div>`;
-    row.innerHTML = `<div class="sfhl-grip"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/></svg></div>${prioBadge}<input type="text" value="${escH(item.term)}" title="${escH(item.term)}" class="sfhl-r-term"><div class="sfhl-sw" data-color="${item.color}"><div class="sfhl-sw-fill" style="background:${item.color}"></div><input type="color" value="${item.color}" class="sfhl-r-color"></div><div class="sfhl-row-acts"><div class="sfhl-ra ${item.enabled?'toggle-on':'toggle-off'} sfhl-toggle-rule" role="button" title="${item.enabled?'Deaktivieren':'Aktivieren'}">${eye}${item.enabled?'An':'Aus'}</div><div class="sfhl-ra del sfhl-del-rule" role="button" title="L\u00f6schen"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div></div>`;
+    const col = safeColor(item.color);
+    const hits = (hitMap && item.enabled && item.term) ? hitMap.get(item.id) : null;
+    const hitBadge = (typeof hits === 'number' && hits > 0) ? `<span class="sfhl-hits" title="${hits} Zeile(n) in der aktuellen Liste treffen (unabh\u00e4ngig von Priorit\u00e4t)">${hits}</span>` : '';
+    row.innerHTML = `<div class="sfhl-grip"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/></svg></div>${prioBadge}<input type="text" value="${escH(item.term)}" title="${escH(item.term)}" class="sfhl-r-term"><div class="sfhl-sw" data-color="${col}"><div class="sfhl-sw-fill" style="background:${col}"></div><input type="color" value="${col}" class="sfhl-r-color"></div><div class="sfhl-row-acts">${hitBadge}<div class="sfhl-ra ${item.enabled?'toggle-on':'toggle-off'} sfhl-toggle-rule" role="button" title="${item.enabled?'Deaktivieren':'Aktivieren'}">${eye}${item.enabled?'An':'Aus'}</div><div class="sfhl-ra del sfhl-del-rule" role="button" title="L\u00f6schen"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div></div>`;
     return row;
   }
 
@@ -1994,6 +2116,7 @@
     }
     // FIX #12: einmalig berechnen, nicht O(n) pro Zeile
     const enabledWithTerm = RULES.filter(r => r.enabled && r.term);
+    const hitMap = computeRuleHits(); // Trefferstatistik (null außerhalb von Case-Listen)
     const ungrouped = filtered.filter(r => !r.folder);
 
     // Ungrouped section header (only when folders exist)
@@ -2004,7 +2127,7 @@
       listEl.appendChild(uh);
     }
     const ub = document.createElement('div'); ub.className = 'sfhl-ungrouped-body'; ub.dataset.folderId = '';
-    for (const item of ungrouped) ub.appendChild(makeRuleRow(item, enabledWithTerm));
+    for (const item of ungrouped) ub.appendChild(makeRuleRow(item, enabledWithTerm, hitMap));
     listEl.appendChild(ub);
 
     // Folders
@@ -2019,14 +2142,14 @@
       const fb = document.createElement('div');
       fb.className = 'sfhl-folder-body' + (isCollapsed ? ' collapsed' : '');
       fb.dataset.folderId = folder.id;
-      for (const item of fRules) fb.appendChild(makeRuleRow(item, enabledWithTerm));
+      for (const item of fRules) fb.appendChild(makeRuleRow(item, enabledWithTerm, hitMap));
       listEl.appendChild(fb);
     }
     updateBadges();
   }
 
   // Rules event delegation
-  listEl.addEventListener('change', e => { const item = RULES.find(x=>x.id===e.target.closest('.sfhl-row')?.dataset.ruleId); if(!item) return; if(e.target.matches('.sfhl-r-term')){item.term=e.target.value;e.target.title=e.target.value;saveRules();rescanSoon(true);} });
+  listEl.addEventListener('change', e => { const item = RULES.find(x=>x.id===e.target.closest('.sfhl-row')?.dataset.ruleId); if(!item) return; if(e.target.matches('.sfhl-r-term')){item.term=e.target.value;e.target.title=e.target.value;saveRules();rescanSoon(true);if(invalidRegexIn(item.term).length)toast('Ungültige Regex — Regel wird als einfache Textsuche behandelt','error',4500);} });
   listEl.addEventListener('click', e => {
     // Folder header toggle (not del button)
     const fhdr = e.target.closest('.sfhl-folder-hdr');
@@ -2041,13 +2164,26 @@
     const fdel = e.target.closest('.sfhl-folder-del');
     if (fdel) {
       const fid = fdel.closest('.sfhl-folder-hdr')?.dataset.folderId; if (!fid) return;
-      if (!confirm('Ordner l\u00f6schen? Enthaltene Regeln werden in "Ohne Ordner" verschoben.')) return;
+      if (!confirm(t('Ordner l\u00f6schen? Enthaltene Regeln werden in "Ohne Ordner" verschoben.'))) return;
       RULES.forEach(r => { if (r.folder === fid) r.folder = null; });
       FOLDERS = FOLDERS.filter(f => f.id !== fid);
       saveFolders(); saveRules(); renderRules(); rescanSoon(true); toast('Ordner gel\u00f6scht', 'info'); return;
     }
     const tgl = e.target.closest('.sfhl-toggle-rule'); if(tgl){const item=RULES.find(x=>x.id===tgl.closest('.sfhl-row')?.dataset.ruleId);if(item){item.enabled=!item.enabled;saveRules();renderRules();rescanSoon(true);}return;}
-    const del = e.target.closest('.sfhl-del-rule'); if(del){RULES=RULES.filter(x=>x.id!==del.closest('.sfhl-row')?.dataset.ruleId);saveRules();renderRules();rescanSoon(true);toast('Gel\u00f6scht','info');}
+    const del = e.target.closest('.sfhl-del-rule');
+    if(del){
+      const id = del.closest('.sfhl-row')?.dataset.ruleId;
+      const idx = RULES.findIndex(x => x.id === id);
+      if (idx < 0) return;
+      const [removed] = RULES.splice(idx, 1);
+      saveRules(); renderRules(); rescanSoon(true);
+      // Undo: gel\u00f6schte Regel an alter Position wiederherstellen
+      toast('Gel\u00f6scht','info',5000,{label:'R\u00fcckg\u00e4ngig',fn:()=>{
+        RULES.splice(Math.min(idx, RULES.length), 0, removed);
+        saveRules(); renderRules(); rescanSoon(true);
+        toast('Regel wiederhergestellt','success');
+      }});
+    }
   });
 
   // Drag & Drop (mit Ordner-Drop-Support)
@@ -2102,7 +2238,7 @@
 
   // Ordner-Erstellen Button
   $('.sfhl-folder-add-btn').onclick = () => {
-    const name = prompt('Ordnername:');
+    const name = prompt(t('Ordnername:'));
     if (!name || !name.trim()) return;
     FOLDERS.push({ id: uid(), name: name.trim() });
     saveFolders(); renderRules(); toast('Ordner erstellt', 'success');
@@ -2166,9 +2302,12 @@
       if (!catMap.has(cat)) catMap.set(cat, []);
       catMap.get(cat).push(snip);
     }
-    // Favoriten-Kategorie immer zuerst
+    // Favoriten-Kategorie immer zuerst (FIX B7: echte Kategorie "★ Favoriten" nicht überschreiben)
     const favSnips = filtered.filter(s => s.favorite);
-    if (favSnips.length > 0) { catMap.set('★ Favoriten', favSnips); }
+    if (favSnips.length > 0) {
+      const existing = catMap.get('★ Favoriten') || [];
+      catMap.set('★ Favoriten', [...new Set([...favSnips, ...existing])]);
+    }
     const cats = [...catMap.keys()].sort((a, b) => {
       if (a === '★ Favoriten') return -1;
       if (b === '★ Favoriten') return 1;
@@ -2580,6 +2719,11 @@
   $('.sfhl-ed-save').onclick = () => {
     const trigger = ($('.sfhl-ed-trigger').value||'').trim().replace(/^[;/:!@]+/,''); // strip prefix chars
     if (!trigger) { $('.sfhl-ed-trigger').focus(); return; }
+    // QF1: Doppelte Trigger machen Auto-Wrap + Einfügen mehrdeutig (erstes gefundenes Snippet gewinnt)
+    const dup = SNIPPETS.find(s => s.trigger.toLowerCase() === trigger.toLowerCase() && s.id !== editingSnipId);
+    if (dup && !confirm(`Trigger "${loadPrefix()+trigger}" existiert bereits ("${dup.label}").\nTrotzdem speichern? Beim Einfügen gewinnt das zuerst gefundene Snippet.`)) {
+      $('.sfhl-ed-trigger').focus(); return;
+    }
     const rb = $('.sfhl-rte-body');
     const bodyVal = rb.innerHTML || '';
     const existingSnip = editingSnipId ? SNIPPETS.find(s => s.id === editingSnipId) : null;
@@ -2605,14 +2749,21 @@
 
   $('.sfhl-ed-delete').onclick = () => {
     if (!editingSnipId) return;
-    const snip = SNIPPETS.find(s => s.id === editingSnipId);
+    const _delIdx = SNIPPETS.findIndex(s => s.id === editingSnipId);
+    if (_delIdx < 0) return;
+    const snip = SNIPPETS[_delIdx];
     if (!confirm(`Snippet "${snip?.label||editingSnipId}" wirklich löschen?`)) return;
     SNIPPETS = SNIPPETS.filter(s => s.id !== editingSnipId);
     saveSnippets(); renderSnippets();
     snipEditor.classList.remove('vis');
     panel.querySelector('[data-tab="snippets"] .sfhl-add-bar').style.display = 'flex';
     editingSnipId = null;
-    toast('Snippet gel\u00f6scht', 'info');
+    // Undo: gel\u00f6schtes Snippet an alter Position wiederherstellen
+    toast('Snippet gel\u00f6scht', 'info', 5000, {label:'R\u00fcckg\u00e4ngig',fn:()=>{
+      SNIPPETS.splice(Math.min(_delIdx, SNIPPETS.length), 0, snip);
+      saveSnippets(); renderSnippets();
+      toast('Snippet wiederhergestellt','success');
+    }});
   };
 
   // Snippet duplizieren (#8)
@@ -2654,7 +2805,7 @@
       setTimeout(() => {
         const validated = sanitizeSnippetImport(data);
         if (!validated) return;
-        if (confirm(`Snippet "${escH(validated.label)}" (;;${escH(validated.trigger)}) importieren?`)) {
+        if (confirm(`Snippet "${validated.label}" (;;${validated.trigger}) importieren?`)) {
           const existing = SNIPPETS.find(s => s.trigger === validated.trigger);
           if (existing) { Object.assign(existing, validated); }
           else { SNIPPETS.push({ id: uid(), ...validated, favorite: false, usageCount: 0 }); }
@@ -3282,11 +3433,23 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     {name:'css:header',type:'cf',sel:'lst-list-view-manager-header lightning-button-icon button',filter:b=>/refresh|aktualisieren/i.test(b.title||b.getAttribute('aria-label')||'')},
     {name:'css:first',type:'css',sel:'lst-list-view-manager-button-bar lightning-button-icon:first-of-type button'},
     {name:'xpath:short',type:'xpath',sel:'//lst-list-view-manager-button-bar//lightning-button-icon//button'},
-    {name:'xpath:legacy',type:'xpath',sel:"//*[@id='brandBand_1']/div/div/div/div/lst-object-home/div/lst-list-view-manager/lst-common-list-internal/lst-list-view-manager-header/div/div[2]/div[4]/lst-list-view-manager-button-bar/div/div[1]/lightning-button-icon/button"},
   ];
-  let _lrfs = '';
+  // QF4: Strategie-Cache wie bei getRows (FIX #17) — getRefreshButton läuft im Countdown
+  // jede Sekunde; ohne Cache werden jedes Mal alle Strategien durchprobiert.
+  let _lrfs = '', _cachedRefreshStrategy = null;
+  function _tryRefreshStrategy(s) {
+    if (s.type === 'css') return document.querySelector(s.sel);
+    if (s.type === 'cf')  return Array.from(document.querySelectorAll(s.sel)).find(s.filter) || null;
+    return document.evaluate(s.sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+  }
   function getRefreshButton() {
-    for(const s of REFRESH_STRATEGIES){try{let r=null;if(s.type==='css')r=document.querySelector(s.sel);else if(s.type==='cf')r=Array.from(document.querySelectorAll(s.sel)).find(s.filter)||null;else r=document.evaluate(s.sel,document,null,XPathResult.FIRST_ORDERED_NODE_TYPE,null).singleNodeValue;if(r){_lrfs=s.name;return r;}}catch{}}
+    if (_cachedRefreshStrategy) {
+      try { const r = _tryRefreshStrategy(_cachedRefreshStrategy); if (r) { _lrfs = _cachedRefreshStrategy.name; return r; } } catch {}
+      _cachedRefreshStrategy = null;
+    }
+    for (const s of REFRESH_STRATEGIES) {
+      try { const r = _tryRefreshStrategy(s); if (r) { _lrfs = s.name; _cachedRefreshStrategy = s; return r; } } catch {}
+    }
     return null;
   }
   // ===== Advanced Rule Matching (UND/NICHT/Regex) =====
@@ -3315,6 +3478,20 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     }
     return isNot ? !result : result;
   }
+  // QF2: Ungültige /regex/ fällt in matchesSingleCondition still auf Textsuche zurück —
+  // diese Funktion findet solche Teile, damit die UI beim Speichern warnen kann.
+  function invalidRegexIn(term) {
+    const bad = [];
+    for (const group of String(term || '').split(/\s*\|\s*|\s+OR\s+/i)) {
+      for (let part of group.split(/\s\+\s/)) {
+        part = part.trim();
+        if (part.startsWith('!')) part = part.slice(1).trim();
+        const m = part.match(/^\/(.+)\/([gimsuy]*)$/);
+        if (m) { try { new RegExp(m[1], m[2]); } catch { bad.push(part); } }
+      }
+    }
+    return bad;
+  }
   function matchesRule(txt, term) {
     if (!term) return false;
     const low = norm(txt);
@@ -3341,6 +3518,9 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     const h = location.href;
     return h.includes('/lightning/o/Case/list') || h.includes('/lightning/r/WorkOrder');
   }
+  // FIX (B3): Auto-Refresh nur auf echten Case-Listen — auf WorkOrder-Seiten gibt es keinen
+  // Refresh-Button, waitBtn() würde dort endlos pollen.
+  function isCaseListView() { return location.href.includes('/lightning/o/Case/list'); }
   function updateVis() { triggerBtn.style.display = 'inline-flex'; }
   updateVis();
   // FIX #5: Cache-Invalidierung in pushState + popstate integriert (statt 1s-Polling)
@@ -3370,13 +3550,15 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     const rem = Math.max(0, Math.ceil((nextAt - Date.now()) / 1000));
     if (progEl) progEl.style.strokeDashoffset = String(263.9 * (1 - rem / total));
     if (lblEl) lblEl.textContent = rem + 's';
-    if (statusEl) statusEl.textContent = isCaseListPage() ? 'Nächster Refresh in…' : 'Nicht auf Case-Seite';
+    if (statusEl) statusEl.textContent = isCaseListView() ? 'Nächster Refresh in…' : 'Nicht auf Case-Listenseite';
     ringEl.classList.add('vis');
   }
   function startCd(secs){const b=getRefreshButton();if(!b)return;clearCd();nextAt=Date.now()+secs*1000;setLbl(b,secs);updateRfRing();cdId=setInterval(()=>{const rem=Math.max(0,nextAt-Date.now());setLbl(getRefreshButton(),Math.ceil(rem/1000));updateRfRing();if(rem<=0)clearCd();},1000);}
   function startLoop(){const secs=loadRefreshSecs();if(!loadRefreshOn()){stopRefresh();return;}clearRf();clearCd();startCd(secs);rfId=setInterval(()=>{const b=getRefreshButton();if(!b){waitBtn(startLoop);clearRf();clearCd();return;}if(Date.now()-_lastActivity<5000){startCd(secs);return;}const snap=snapshotMarked();b.click();setTimeout(()=>highlightAndBlink(snap),1500);startCd(secs);},secs*1000);}
-  function stopRefresh(){clearRf();clearCd();clrLbl();updateRfRing();}
-  function restartRefresh(){if(loadRefreshOn()&&isCaseListPage())waitBtn(startLoop);else stopRefresh();}
+  // FIX (B3): stopRefresh räumt auch waitBtn-Observer + Polling auf — sonst läuft nach
+  // SPA-Navigation weg von der Case-Liste ein 1s-Intervall + MutationObserver endlos weiter.
+  function stopRefresh(){clearRf();clearCd();if(rfObs){rfObs.disconnect();rfObs=null;}if(plId){clearInterval(plId);plId=null;}clrLbl();updateRfRing();}
+  function restartRefresh(){if(loadRefreshOn()&&isCaseListView())waitBtn(startLoop);else stopRefresh();}
   function waitBtn(cb){if(getRefreshButton()){cb?.();return;}if(rfObs){rfObs.disconnect();rfObs=null;}if(plId){clearInterval(plId);plId=null;}rfObs=new MutationObserver(()=>{if(getRefreshButton()){rfObs.disconnect();rfObs=null;if(plId){clearInterval(plId);plId=null;}cb?.();}});rfObs.observe(document.documentElement,{childList:true,subtree:true});plId=setInterval(()=>{if(getRefreshButton()){if(rfObs){rfObs.disconnect();rfObs=null;}clearInterval(plId);plId=null;cb?.();}},1000);}
   window.addEventListener('load', () => {
     setTimeout(restartRefresh, 800);
@@ -3391,7 +3573,27 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   if(document.body){const obs=new MutationObserver(muts=>{for(const mu of muts){if(mu.addedNodes?.length){for(const n of mu.addedNodes){if(n instanceof Element&&(n.matches?.('tr,table')||n.querySelector?.('tr,table'))){rescanSoon(false);return;}}}if(mu.type==='characterData'){rescanSoon(false);return;}}});obs.observe(document.body,{childList:true,subtree:true,characterData:true});}
   // Periodic fallback: MutationObserver greift nicht über SF native Shadow DOM Boundaries.
   // highlightRows(false) markiert neue Zeilen nach, ohne bereits korrekte zu entfernen.
-  setInterval(() => { tryAttachTinyMCE(); periodicScan(); if (isCaseListPage()) highlightRows(false); }, 5000);
+  setInterval(() => { if (isCaseListPage()) highlightRows(false); }, 5000);
+  // FIX (B4): Deep-Scan (querySelectorAll('*') über alle Shadow Roots) ist teuer — als reiner
+  // Fallback reicht 30s; neue Editoren/Iframes erkennt primär der MutationObserver oben.
+  setInterval(periodicScan, 30000);
+
+  // ===== Backup-Reminder =====
+  // localStorage-Verlust = Datenverlust (siehe README-Troubleshooting). Erinnert dezent,
+  // wenn >30 Tage nicht exportiert wurde — max. 1× pro 7 Tage, nur bei aktiver Nutzung.
+  (function backupReminder() {
+    try {
+      const DAY = 86400000;
+      const lastExp  = parseInt(localStorage.getItem(LS_LAST_EXPORT), 10) || 0;
+      const lastHint = parseInt(localStorage.getItem(LS_BACKUP_HINT), 10) || 0;
+      if (loadRecent().length === 0) return;           // Nutzungs-Proxy: noch nie Snippet eingefügt → kein Hinweis
+      if (Date.now() - lastExp  < 30 * DAY) return;
+      if (Date.now() - lastHint <  7 * DAY) return;
+      localStorage.setItem(LS_BACKUP_HINT, String(Date.now()));
+      setTimeout(() => toast('Backup-Tipp: Regeln & Snippets seit über 30 Tagen nicht exportiert', 'info', 8000,
+        { label: 'Jetzt exportieren', fn: () => doExport('all') }), 4000);
+    } catch {}
+  })();
 
   console.log('[SFHL] Init complete');
 })();
