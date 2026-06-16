@@ -252,6 +252,8 @@ Das Skript verarbeitet Daten ausschließlich lokal im Browser des angemeldeten B
 | `sfhl_recent_v1` | Zuletzt verwendete Snippet-IDs |
 | `sfhl_last_export` | Zeitstempel des letzten Exports (Backup-Reminder) |
 | `sfhl_backup_hint_at` | Zeitstempel des letzten Backup-Hinweises |
+| `sfhl_preview_enabled` | Vorschau vor dem Einfügen ein/aus |
+| `sfhl_last_seen_version` | Zuletzt gesehene Version (für „Was ist neu") |
 
 **Auto-Update (Tampermonkey):**
 ```

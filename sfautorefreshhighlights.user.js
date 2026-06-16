@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.3.0
+// @version      4.4.0
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,8 +19,24 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.3.0';
+  const VERSION = '4.4.0';
   console.log('[SFHL] v' + VERSION + ' gestartet');
+
+  // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
+  const CHANGELOG = {
+    '4.4.0': {
+      de: [
+        'Sicherheitsnetz: Warn-Hinweis, wenn Anrede, Nachname oder Kontaktname beim Einfügen leer bleiben.',
+        'Optionale Vorschau vor dem Einfügen (in den Einstellungen aktivierbar) — zeigt das fertige Snippet und fragt alle {eingabe:}-Felder gebündelt ab.',
+        'Dieser „Was ist neu"-Hinweis nach einem Update.',
+      ],
+      en: [
+        'Safety net: warning when salutation, last name or contact name resolve empty on insert.',
+        'Optional preview before inserting (enable in settings) — shows the final snippet and asks for all {eingabe:} fields at once.',
+        'This “what’s new” notice after an update.',
+      ],
+    },
+  };
 
   // ===== Storage Keys =====
   const LS_CFG      = 'sfhl_config_v4';
@@ -41,6 +57,8 @@
   const LS_DEF_LANG  = 'sfhl_default_language'; // 'de' oder 'en'
   const LS_LAST_EXPORT = 'sfhl_last_export';    // Timestamp des letzten Exports (Backup-Reminder)
   const LS_BACKUP_HINT = 'sfhl_backup_hint_at'; // Timestamp des letzten Backup-Hinweises
+  const LS_PREVIEW_ON  = 'sfhl_preview_enabled'; // Feature 2 (v4.4.0): Vorschau vor dem Einfügen an/aus
+  const LS_LAST_VER    = 'sfhl_last_seen_version'; // Feature 3 (v4.4.0): zuletzt gesehene Version für „Was ist neu"
 
   // ===== Helpers =====
   function uid() { return 'k' + Math.random().toString(36).slice(2, 10); }
@@ -221,6 +239,9 @@
   function saveWrapAnrede(t) { localStorage.setItem(LS_WRAP_ANR, t); }
   function loadWrapSignatur() { return localStorage.getItem(LS_WRAP_SIG) || 'sig'; }
   function saveWrapSignatur(t) { localStorage.setItem(LS_WRAP_SIG, t); }
+  // Feature 2 (v4.4.0): Vorschau vor dem Einfügen (optional, Default aus)
+  function loadPreviewOn() { return localStorage.getItem(LS_PREVIEW_ON) === '1'; }
+  function savePreviewOn(on) { localStorage.setItem(LS_PREVIEW_ON, on?'1':'0'); }
   // FIX #7: loadDefaultLang cachen
   let _cachedLang = null;
   function loadDefaultLang() { if (_cachedLang === null) _cachedLang = localStorage.getItem(LS_DEF_LANG) || 'de'; return _cachedLang; }
@@ -264,6 +285,9 @@
     'Auto-Wrap': 'Auto-wrap',
     'Anrede + Signatur automatisch einf\u00fcgen': 'Automatically insert salutation + signature',
     'Anrede': 'Salutation',
+    'Nachname': 'Last name',
+    'Kontaktname': 'Contact name',
+    'konnte nicht ermittelt werden – bitte vor dem Senden prüfen.': 'could not be resolved – please check before sending.',
     'Signatur': 'Signature',
     'Wenn aktiv, wird beim Einf\u00fcgen eines Snippets automatisch die Anrede davor und die Signatur danach eingef\u00fcgt. Gilt nicht wenn das Snippet selbst die Anrede oder Signatur ist.': 'When active, salutation is inserted before and signature after each snippet. Skipped if the snippet itself is the salutation or signature.',
     'Export': 'Export',
@@ -348,6 +372,15 @@
     'Auto-Refresh aus': 'Auto-refresh off',
     'Auto-Wrap an': 'Auto-wrap on',
     'Auto-Wrap aus': 'Auto-wrap off',
+    'Vorschau': 'Preview',
+    'Vorschau an': 'Preview on',
+    'Vorschau aus': 'Preview off',
+    'Vorschau vor dem Einfügen': 'Preview before inserting',
+    'Vor dem Einfügen Vorschau zeigen und {eingabe:}-Felder abfragen': 'Show a preview before inserting and ask for {eingabe:} fields',
+    'Einfügen': 'Insert',
+    'Abbrechen': 'Cancel',
+    'Was ist neu': "What's new",
+    'Verstanden': 'Got it',
     'Link kopiert! Kollege kann ihn in SF öffnen.': 'Link copied! A colleague can open it in SF.',
     'Teilen fehlgeschlagen': 'Sharing failed',
     'Ungültige Regex — Regel wird als einfache Textsuche behandelt': 'Invalid regex — rule is treated as plain text search',
@@ -1011,7 +1044,8 @@
     return { salutation: salutation.trim(), firstName, lastName };
   }
 
-  function resolvePlaceholders(text) {
+  function resolvePlaceholders(text, meta) {
+    const _origForMeta = String(text || ''); // Feature 1 (v4.4.0): Quelltext für Leer-Prüfung kritischer Platzhalter
     const now = new Date();
     const pad = n => String(n).padStart(2,'0');
     const dateStr = `${pad(now.getDate())}.${pad(now.getMonth()+1)}.${now.getFullYear()}`;
@@ -1078,6 +1112,20 @@
       return val !== null ? val : '{eingabe:' + label + '}';
     });
 
+    // Feature 1 (v4.4.0): Platzhalter-Sicherheitsnetz — kritische Kontaktfelder sammeln,
+    // die im Quelltext stehen, aber leer aufgelöst werden (nicht-blockierender Warn-Toast in insertSnippet).
+    if (meta && typeof meta === 'object') {
+      meta.empty = meta.empty || [];
+      const _crit = [
+        { re:/\{anrede\}|\{!Contact\.Salutation\}/i, val:anrede,   label:'Anrede' },
+        { re:/\{nachname\}|\{!Contact\.LastName\}/i,  val:nachname,  label:'Nachname' },
+        { re:/\{kontakt\}|\{!Contact\.Name\}/i,       val:kontakt,   label:'Kontaktname' },
+      ];
+      for (const c of _crit) {
+        if (c.re.test(_origForMeta) && !String(c.val||'').trim() && !meta.empty.includes(c.label)) meta.empty.push(c.label);
+      }
+    }
+
     return text
       .replace(/\{name\}/gi,          loadUname()  || '[Name]')
       .replace(/\{datum\}/gi,          dateStr)
@@ -1131,6 +1179,22 @@
     .sfhl-toast--info{background:#1e293b;color:#e2e8f0} .sfhl-toast--success{background:#065f46;color:#d1fae5} .sfhl-toast--error{background:#991b1b;color:#fee2e2}
     .sfhl-toast.has-action{pointer-events:auto;display:flex;align-items:center;gap:12px}
     .sfhl-toast-act{border:1px solid rgba(255,255,255,.35);background:transparent;color:inherit;border-radius:5px;padding:2px 10px;font:600 11.5px/1.6 inherit;cursor:pointer;white-space:nowrap}
+
+    /* Insert-Vorschau-Dialog (Feature 2, v4.4.0) */
+    .sfhl-ovl{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:2147483647;display:flex;align-items:center;justify-content:center;font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+    .sfhl-dlg{background:#fff;color:#1a1a1a;width:min(560px,92vw);max-height:86vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden}
+    .sfhl-dlg-h{padding:14px 18px;font-size:14px;font-weight:600;border-bottom:1px solid #eef0f3;display:flex;align-items:center;gap:8px}
+    .sfhl-dlg-b{padding:16px 18px;overflow:auto}
+    .sfhl-dlg-f{padding:12px 18px;border-top:1px solid #eef0f3;display:flex;justify-content:flex-end;gap:8px}
+    .sfhl-dlg-fld{margin-bottom:12px}
+    .sfhl-dlg-fld label{display:block;font-size:11.5px;font-weight:600;color:#6b7280;margin-bottom:4px}
+    .sfhl-dlg-fld input,.sfhl-dlg-fld textarea{width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;font-family:inherit}
+    .sfhl-dlg-fld input:focus,.sfhl-dlg-fld textarea:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.12)}
+    .sfhl-dlg-pv-l{font-size:11.5px;font-weight:600;color:#6b7280;margin:4px 0 6px}
+    .sfhl-dlg-pv{border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#f9fafb;max-height:34vh;overflow:auto;font-size:13px;line-height:1.5;word-break:break-word}
+    .sfhl-dlg-btn{border:none;border-radius:7px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer}
+    .sfhl-dlg-btn--p{background:#4f46e5;color:#fff} .sfhl-dlg-btn--p:hover{background:#4338ca}
+    .sfhl-dlg-btn--s{background:#f3f4f6;color:#374151} .sfhl-dlg-btn--s:hover{background:#e5e7eb}
     .sfhl-toast-act:hover{background:rgba(255,255,255,.12)}
 
     /* Trigger pill */
@@ -1609,6 +1673,7 @@
           <div class="sfhl-set-row2"><label data-i18n="Anrede">Anrede</label><select class="sfhl-wrap-anrede"></select></div>
           <div class="sfhl-set-row2"><label data-i18n="Signatur">Signatur</label><select class="sfhl-wrap-sig"></select></div>
           <p style="font-size:11px;color:#9ca3af;margin-top:6px">Wenn aktiv, wird beim Einf\u00fcgen eines Snippets automatisch die Anrede davor und die Signatur danach eingef\u00fcgt. Gilt nicht wenn das Snippet selbst die Anrede oder Signatur ist.</p>
+          <div class="sfhl-set-row2" style="margin-top:10px"><label data-i18n="Vorschau">Vorschau</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-preview-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px" data-i18n="Vor dem Einf\u00fcgen Vorschau zeigen und {eingabe:}-Felder abfragen">Vor dem Einf\u00fcgen Vorschau zeigen und {eingabe:}-Felder abfragen</span></div>
         </div>
         <div class="sfhl-set-section">
           <h3 data-i18n="Export">Export</h3>
@@ -1825,6 +1890,7 @@
   const wrapCb      = $('.sfhl-wrap-enabled');
   const wrapAnrSel  = $('.sfhl-wrap-anrede');
   const wrapSigSel  = $('.sfhl-wrap-sig');
+  const previewCb   = $('.sfhl-preview-enabled');
 
   rfInput.value = String(loadRefreshSecs());
   rfCb.checked = loadRefreshOn();
@@ -1832,6 +1898,7 @@
   setUname.value = loadUname();
   setLang.value = loadDefaultLang();
   wrapCb.checked = loadWrapOn();
+  previewCb.checked = loadPreviewOn();
 
   // Wrap-Dropdowns befüllen
   function updateWrapDropdowns() {
@@ -2825,6 +2892,7 @@
     toast('Default language: ' + (setLang.value==='en'?'English':'Deutsch'), 'info');
   };
   wrapCb.onchange = () => { saveWrapOn(wrapCb.checked); toast(wrapCb.checked ? 'Auto-Wrap an' : 'Auto-Wrap aus', 'info'); };
+  previewCb.onchange = () => { savePreviewOn(previewCb.checked); toast(previewCb.checked ? 'Vorschau an' : 'Vorschau aus', 'info'); };
   wrapAnrSel.onchange = () => saveWrapAnrede(wrapAnrSel.value);
   wrapSigSel.onchange = () => saveWrapSignatur(wrapSigSel.value);
 
@@ -2911,10 +2979,6 @@
     // Sprache aus Dropdown oder Default
     const activeLang = dropdown._activeLang || loadDefaultLang();
     const bodyToInsert = (activeLang === 'en' && snippet.bodyEn) ? snippet.bodyEn : snippet.body;
-    // Usage tracken (#15)
-    snippet.usageCount = (snippet.usageCount||0) + 1;
-    addRecent(snippet.id);
-    saveSnippets();
 
     // Auto-Wrap: Anrede + Body + Signatur (wenn aktiviert und Snippet nicht selbst Anrede/Sig ist)
     let fullBody = bodyToInsert;
@@ -2932,7 +2996,90 @@
       if (sigBody) fullBody = fullBody + '<br><br>' + sigBody;
     }
 
-    const resolved = resolvePlaceholders(fullBody);
+    // Feature 2 (v4.4.0): optionale Vorschau vor dem Einfügen + gebündelte {eingabe:}-Felder.
+    // Wenn aktiv, zeigt ein Dialog die aufgelöste Vorschau und sammelt alle {eingabe:}-Felder
+    // gebündelt; bei Bestätigung werden die Werte vorab eingesetzt (kein Doppel-Prompt im Resolver).
+    if (loadPreviewOn()) {
+      const _labels = [];
+      fullBody.replace(/\{eingabe:([^}]+)\}/gi, (_, l) => { l = l.trim(); if (l && !_labels.includes(l)) _labels.push(l); return ''; });
+      showInsertDialog(fullBody, _labels, (substitutedBody, ok) => {
+        if (!ok) { closeDropdown(); return; }
+        finishInsert(el, triggerInfo, snippet, substitutedBody);
+      });
+      return;
+    }
+    finishInsert(el, triggerInfo, snippet, fullBody);
+  }
+
+  // Feature 2 (v4.4.0): {eingabe:LABEL} → Wert aus map einsetzen (gebündelt, gleiche Labels teilen Wert)
+  function substituteEingabe(body, values) {
+    return body.replace(/\{eingabe:([^}]+)\}/gi, (m, l) => {
+      const v = values[l.trim()];
+      return v != null ? v : m;
+    });
+  }
+
+  // Feature 2 (v4.4.0): Vorschau-/Eingabe-Dialog. cb(substitutedBody, confirmed)
+  function showInsertDialog(fullBody, labels, cb) {
+    let done = false;
+    const finish = (ok, vals) => {
+      if (done) return; done = true;
+      try { document.removeEventListener('keydown', onKey, true); } catch {}
+      ovl.remove();
+      cb(ok ? substituteEingabe(fullBody, vals || {}) : null, ok);
+    };
+    const ovl = document.createElement('div');
+    ovl.className = 'sfhl-ovl';
+    const fieldsHtml = labels.map((l, i) =>
+      `<div class="sfhl-dlg-fld"><label>${escH(l)}</label><input type="text" data-sfhl-eingabe="${i}" placeholder="${escH(l)}"></div>`
+    ).join('');
+    ovl.innerHTML =
+      `<div class="sfhl-dlg" role="dialog" aria-modal="true">
+        <div class="sfhl-dlg-h">📋 ${t('Vorschau vor dem Einfügen')}</div>
+        <div class="sfhl-dlg-b">
+          ${fieldsHtml}
+          <div class="sfhl-dlg-pv-l">${t('Vorschau')}</div>
+          <div class="sfhl-dlg-pv" data-sfhl-pv></div>
+        </div>
+        <div class="sfhl-dlg-f">
+          <button class="sfhl-dlg-btn sfhl-dlg-btn--s" data-sfhl-cancel>${t('Abbrechen')}</button>
+          <button class="sfhl-dlg-btn sfhl-dlg-btn--p" data-sfhl-ok>${t('Einfügen')}</button>
+        </div>
+      </div>`;
+    document.documentElement.appendChild(ovl);
+
+    const inputs = Array.from(ovl.querySelectorAll('[data-sfhl-eingabe]'));
+    const pvEl = ovl.querySelector('[data-sfhl-pv]');
+    const collect = () => { const v = {}; inputs.forEach((inp, i) => { v[labels[i]] = inp.value; }); return v; };
+    const updatePreview = () => {
+      const substituted = substituteEingabe(fullBody, collect());
+      const resolved = resolvePlaceholders(substituted); // ohne meta → keine Doppel-Sammlung
+      let html = resolveLinks(resolved, true);
+      html = sanitizeHtml(html.replace(/\n/g, '<br>')).replace('{|}', '');
+      pvEl.innerHTML = html;
+    };
+    inputs.forEach(inp => inp.addEventListener('input', updatePreview));
+    updatePreview();
+
+    ovl.querySelector('[data-sfhl-ok]').onclick = () => finish(true, collect());
+    ovl.querySelector('[data-sfhl-cancel]').onclick = () => finish(false);
+    ovl.addEventListener('mousedown', e => { if (e.target === ovl) finish(false); });
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+      else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); finish(true, collect()); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    if (inputs.length) inputs[0].focus();
+  }
+
+  function finishInsert(el, triggerInfo, snippet, fullBody) {
+    // Usage tracken (#15) — erst beim tatsächlichen Einfügen, nicht bei abgebrochener Vorschau
+    snippet.usageCount = (snippet.usageCount||0) + 1;
+    addRecent(snippet.id);
+    saveSnippets();
+
+    const insMeta = {}; // Feature 1 (v4.4.0): sammelt leer aufgelöste Pflicht-Platzhalter
+    const resolved = resolvePlaceholders(fullBody, insMeta);
     const cursorMarker = '{|}';
     const hasCursor = resolved.includes(cursorMarker);
     const prefix = loadPrefix();
@@ -3063,6 +3210,11 @@
           }
         }
       }
+    // Feature 1 (v4.4.0): Warnung, wenn Anrede/Nachname/Kontakt leer aufgelöst wurden
+    if (insMeta.empty && insMeta.empty.length) {
+      const fields = insMeta.empty.map(t).join(', ');
+      toast('⚠️ ' + fields + ': ' + t('konnte nicht ermittelt werden – bitte vor dem Senden prüfen.'), 'error', 6000);
+    }
     closeDropdown(); // FIX #15: orphaned } from if(true) removed
   }
 
@@ -3592,6 +3744,37 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
       localStorage.setItem(LS_BACKUP_HINT, String(Date.now()));
       setTimeout(() => toast('Backup-Tipp: Regeln & Snippets seit über 30 Tagen nicht exportiert', 'info', 8000,
         { label: 'Jetzt exportieren', fn: () => doExport('all') }), 4000);
+    } catch {}
+  })();
+
+  // ===== „Was ist neu" nach Update (Feature 3, v4.4.0) =====
+  function showWhatsNew(version, bullets) {
+    const ovl = document.createElement('div');
+    ovl.className = 'sfhl-ovl';
+    const items = bullets.map(b => `<li style="margin-bottom:8px">${escH(b)}</li>`).join('');
+    ovl.innerHTML =
+      `<div class="sfhl-dlg" role="dialog" aria-modal="true">
+        <div class="sfhl-dlg-h">🎉 ${t('Was ist neu')} — v${escH(version)}</div>
+        <div class="sfhl-dlg-b"><ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.5">${items}</ul></div>
+        <div class="sfhl-dlg-f"><button class="sfhl-dlg-btn sfhl-dlg-btn--p" data-sfhl-ok>${t('Verstanden')}</button></div>
+      </div>`;
+    document.documentElement.appendChild(ovl);
+    const close = () => { try { document.removeEventListener('keydown', onKey, true); } catch {} ovl.remove(); };
+    ovl.querySelector('[data-sfhl-ok]').onclick = close;
+    ovl.addEventListener('mousedown', e => { if (e.target === ovl) close(); });
+    const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
+    document.addEventListener('keydown', onKey, true);
+  }
+  (function whatsNewCheck() {
+    try {
+      const seen = localStorage.getItem(LS_LAST_VER);
+      if (seen === VERSION) return;
+      localStorage.setItem(LS_LAST_VER, VERSION);
+      if (!seen) return; // Erstinstallation → kein Changelog
+      const entry = CHANGELOG[VERSION];
+      if (!entry) return;
+      const bullets = (entry[loadDefaultLang()] || entry.de) || [];
+      if (bullets.length) setTimeout(() => showWhatsNew(VERSION, bullets), 1800);
     } catch {}
   })();
 
