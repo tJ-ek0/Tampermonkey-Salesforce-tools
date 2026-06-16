@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.5.3
+// @version      4.6.0
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,11 +19,19 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.5.3';
+  const VERSION = '4.6.0';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
   const CHANGELOG = {
+    '4.6.0': {
+      de: [
+        'Neu: Geräte-Doku-Lookup. Gerätecode markieren (Produkt-Root, Seriennummer, Auftrag oder Ordercode) → „📄 Doku-Links" öffnet ein Popup mit passenden Links. Link-Vorlagen werden per Config-Datei importiert (Einstellungen → Geräte-Doku); es sind keine im Skript hinterlegt.',
+      ],
+      en: [
+        'New: device documentation lookup. Select a device code (product root, serial, order or order code) → “📄 Doc links” opens a popup with matching links. Link templates are imported via a config file (Settings → Device docs); none are bundled in the script.',
+      ],
+    },
     '4.5.3': {
       de: [
         'Fix für die Salesforce-Konsole mit mehreren Tabs: Snippets lesen jetzt Kontakt/Betreff/Case-Nr. nur noch aus dem aktiven Tab. Vorher konnte beim Tab-Wechsel der Name aus dem vorherigen Tab eingefügt werden (bis F5).',
@@ -303,6 +311,16 @@
   // v4.5.0 #4: Button-Position (header | floating | hidden). Default floating = bisheriges Verhalten.
   function loadBtnPos() { const v = localStorage.getItem('sfhl_btn_pos'); return (v === 'header' || v === 'hidden') ? v : 'floating'; }
   function saveBtnPos(v) { localStorage.setItem('sfhl_btn_pos', v); }
+  // v4.6.0 Geräte-Doku-Lookup: KEINE URLs als Default (öffentliches Repo) — alle Link-
+  // Vorlagen werden lokal per Config-Import geladen. Eintrag: {id,key,label,type,url}.
+  // type ∈ root|serial|auftrag|order|free. url nutzt %s als Platzhalter (alle Vorkommen).
+  function loadDokuOn() { return localStorage.getItem('sfhl_doku_enabled') !== '0'; }
+  function saveDokuOn(on) { localStorage.setItem('sfhl_doku_enabled', on ? '1' : '0'); }
+  function loadDokuLinks() {
+    try { const raw = localStorage.getItem('sfhl_doku_links'); if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.map(e => ({ id:e.id||uid(), key:String(e.key||''), label:String(e.label||''), type:String(e.type||'root'), url:String(e.url||'') })).filter(e => e.url && /%s/.test(e.url)); } } catch {}
+    return [];
+  }
+  function saveDokuLinks(arr) { localStorage.setItem('sfhl_doku_links', JSON.stringify(arr || [])); }
   // FIX #7: loadDefaultLang cachen
   let _cachedLang = null;
   function loadDefaultLang() { if (_cachedLang === null) _cachedLang = localStorage.getItem(LS_DEF_LANG) || 'de'; return _cachedLang; }
@@ -1414,6 +1432,13 @@
     /* #3 „Regel aus Auswahl"-Button */
     .sfhl-sel-btn{position:absolute;z-index:2147483646;background:#0176d3;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:12px;font-weight:600;padding:5px 10px;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;user-select:none;white-space:nowrap}
     .sfhl-sel-btn:hover{background:#014486}
+    /* v4.6.0 Geräte-Doku-Lookup Popup */
+    .sfhl-doku-pop{position:absolute;z-index:2147483646;min-width:200px;max-width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    .sfhl-doku-hd{font-size:12px;font-weight:700;color:#0176d3;margin:0 0 6px;word-break:break-all}
+    .sfhl-doku-grp{font-size:9.5px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.4px;margin:6px 0 3px}
+    .sfhl-doku-row{display:flex;flex-wrap:wrap;gap:5px}
+    .sfhl-doku-lnk{display:inline-block;font-size:11.5px;font-weight:600;color:#0176d3;background:#eef4ff;border:1px solid #cfe3fb;border-radius:5px;padding:3px 9px;text-decoration:none;cursor:pointer}
+    .sfhl-doku-lnk:hover{background:#0176d3;color:#fff;border-color:#0176d3}
     /* #4 Header-Icon in der SLDS-Kopfleiste */
     .sfhl-hdr-item .sfhl-hdr-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;min-width:2rem;background:transparent;border:none;cursor:pointer;color:inherit;padding:0}
     .sfhl-hdr-mark{display:inline-flex;width:20px;height:20px}
@@ -1837,6 +1862,16 @@
           <div class="sfhl-set-row2"><label data-i18n="Regel aus Auswahl">Regel aus Auswahl</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-selrule-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Listentext markieren \u2192 Schaltfl\u00e4che \u201eRegel aus Auswahl"</span></div>
         </div>
         <div class="sfhl-set-section">
+          <h3 data-i18n="Ger\u00e4te-Doku">Ger\u00e4te-Doku</h3>
+          <div class="sfhl-set-row2"><label data-i18n="Doku-Lookup">Doku-Lookup</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-doku-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Ger\u00e4tecode markieren \u2192 \u201e\ud83d\udcc4 Doku-Links"</span></div>
+          <p style="font-size:11px;color:#9ca3af;margin:2px 0 6px"><span class="sfhl-doku-count">0</span> Link-Vorlagen geladen. Vorlagen werden per Config-Datei importiert (keine im Skript hinterlegt).</p>
+          <div class="sfhl-set-actions">
+            <div class="sfhl-btn-sm sfhl-act-doku-import" role="button">\u2191 Doku-Links importieren</div>
+            <div class="sfhl-btn-sm sfhl-act-doku-export" role="button">\u2193 Doku-Links exportieren</div>
+            <div class="sfhl-btn-danger sfhl-act-doku-clear" role="button">Leeren</div>
+          </div>
+        </div>
+        <div class="sfhl-set-section">
           <h3 data-i18n="Export">Export</h3>
           <div class="sfhl-set-actions">
             <div class="sfhl-btn-sm sfhl-act-export" role="button" data-i18n="\u2193 Alles exportieren">\u2193 Alles exportieren</div>
@@ -2058,6 +2093,8 @@
   const legendCb    = $('.sfhl-legend-enabled');
   const selRuleCb   = $('.sfhl-selrule-enabled');
   const btnPosSel   = $('.sfhl-set-btnpos');
+  const dokuCb      = $('.sfhl-doku-enabled');
+  const dokuCountEl = $('.sfhl-doku-count');
 
   rfInput.value = String(loadRefreshSecs());
   rfCb.checked = loadRefreshOn();
@@ -2072,6 +2109,9 @@
   legendCb.checked = loadLegendOn();
   selRuleCb.checked = loadSelRuleOn();
   btnPosSel.value = loadBtnPos();
+  dokuCb.checked = loadDokuOn();
+  function updateDokuCount() { if (dokuCountEl) dokuCountEl.textContent = String(loadDokuLinks().length); }
+  updateDokuCount();
 
   // Wrap-Dropdowns befüllen
   function updateWrapDropdowns() {
@@ -2162,6 +2202,37 @@
   $('.sfhl-act-export-rules').onclick  = () => doExport('rules');
   $('.sfhl-act-export-snips').onclick  = () => doExport('snips');
   $('.sfhl-act-import').onclick = () => { fileInput.value = ''; fileInput.click(); };
+  // v4.6.0 Geräte-Doku-Lookup
+  dokuCb.onchange = () => { saveDokuOn(dokuCb.checked); toast(dokuCb.checked ? 'Doku-Lookup an' : 'Doku-Lookup aus', 'info'); };
+  $('.sfhl-act-doku-export').onclick = () => {
+    try {
+      const dt=new Date(), pad=n=>String(n).padStart(2,'0'), ds=`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+      const blob = new Blob([JSON.stringify({ dokuLinks: loadDokuLinks() }, null, 2)], { type:'application/json' });
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`sfhl_doku_links_${ds}.json`;
+      document.body.appendChild(a); a.click(); URL.revokeObjectURL(a.href); a.remove();
+      toast('Doku-Links exportiert','success');
+    } catch { toast('Export fehlgeschlagen','error'); }
+  };
+  $('.sfhl-act-doku-import').onclick = () => {
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='.json,.txt';
+    inp.onchange = async ev => {
+      const f=ev.target.files?.[0]; if(!f) return;
+      try {
+        const raw=JSON.parse(await f.text());
+        const arr=Array.isArray(raw)?raw:(raw.dokuLinks||raw.links||null);
+        if(!Array.isArray(arr)){ toast('Kein gültiges Doku-Link-Format','error',3500); return; }
+        const TYPES=['root','serial','auftrag','order','free'];
+        const clean=arr.map(e=>({ id:uid(), key:String(e.key||'').slice(0,24), label:String(e.label||'').slice(0,100), type:TYPES.includes(e.type)?e.type:'root', url:String(e.url||'').slice(0,500) })).filter(e=>e.url && /%s/.test(e.url));
+        saveDokuLinks(clean); updateDokuCount();
+        toast(`${clean.length} Doku-Links importiert`,'success');
+      } catch { toast('Ungültiges Format','error',3500); }
+    };
+    inp.click();
+  };
+  $('.sfhl-act-doku-clear').onclick = () => {
+    if(!confirm(t('Alle Doku-Link-Vorlagen löschen?'))) return;
+    saveDokuLinks([]); updateDokuCount(); toast('Doku-Links geleert','info');
+  };
   $('.sfhl-act-reset').onclick  = () => doReset();
   $('.sfhl-act-reset-rules').onclick = () => {
     if (!confirm(t('Markierungsregeln auf Standard zur\u00fccksetzen?'))) return;
@@ -3874,19 +3945,19 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     }).join('');
   }
 
-  // ===== v4.5.0 #3: Regel aus markiertem Listentext anlegen =====
+  // ===== v4.5.0 #3: Regel aus Auswahl  +  v4.6.0: Geräte-Doku-Lookup =====
   let _selBtn=null;
   function hideSelButton(){ if(_selBtn){_selBtn.remove();_selBtn=null;} }
-  function showSelButton(x,y,text){
+  function showSelButton(x,y,label,title,onAct){
     hideSelButton();
     _selBtn=document.createElement('div');
     _selBtn.className='sfhl-sel-btn';
-    _selBtn.textContent='➕ Regel aus Auswahl';
-    _selBtn.title='„'+text+'" als Markierungs-Regel anlegen';
+    _selBtn.textContent=label;
+    _selBtn.title=title;
     _selBtn.style.left=Math.round(x)+'px';
     _selBtn.style.top=Math.round(y)+'px';
     // mousedown statt click: verhindert, dass die Textauswahl vorher kollabiert
-    _selBtn.addEventListener('mousedown', ev=>{ ev.preventDefault(); ev.stopPropagation(); createRuleFromSelection(text); hideSelButton(); });
+    _selBtn.addEventListener('mousedown', ev=>{ ev.preventDefault(); ev.stopPropagation(); onAct(); hideSelButton(); });
     document.body.appendChild(_selBtn);
   }
   function createRuleFromSelection(term){
@@ -3896,17 +3967,68 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     const short = term.length>30 ? term.slice(0,29)+'…' : term;
     toast('Regel angelegt: „'+short+'"','success');
   }
+
+  // --- Geräte-Doku-Lookup: Code-Typ aus markiertem Text erkennen ---
+  function detectCodeType(s){
+    const t=(s||'').trim();
+    if(!t||t.length<3||t.length>40||/\s/.test(t)) return null;
+    if(/^[A-Za-z]{2}\d{7,10}$/.test(t)) return 'serial';                                    // MC023616000
+    if(/^[A-Za-z0-9]{2,}-[A-Za-z0-9.\/]{2,}$/.test(t) && /[A-Za-z]/.test(t)) return 'order'; // RSG30-A1A3ABA1
+    if(/^\d{8,12}$/.test(t)) return 'auftrag';                                               // 3800345039
+    if(/^[A-Za-z0-9]{3,14}$/.test(t) && /[A-Za-z]/.test(t) && /\d/.test(t)) return 'root';   // FMR60B, CM442, 5P3B
+    return null;
+  }
+  function dokuCandidates(type, text){
+    const c = { free: text };
+    if(type==='order'){ c.order = text; c.root = text.split('-')[0]; }
+    else if(type){ c[type] = text; }
+    return c;
+  }
+  const _DOKU_GROUPS = [['root','Produkt-Root'],['order','Ordercode'],['serial','Seriennummer'],['auftrag','Auftragsnummer'],['free','Suche']];
+  let _dokuPop=null;
+  function hideDokuPopup(){ if(_dokuPop){_dokuPop.remove();_dokuPop=null;} }
+  function showDokuPopup(x,y,text,type){
+    hideDokuPopup();
+    const cand = dokuCandidates(type, text);
+    const links = loadDokuLinks().filter(l => cand[l.type] !== undefined);
+    if(!links.length){ toast('Keine Doku-Vorlagen geladen — bitte Config in den Einstellungen importieren','info',4500); return; }
+    const pop=document.createElement('div'); pop.className='sfhl-doku-pop';
+    pop.style.left=Math.round(x)+'px'; pop.style.top=Math.round(y)+'px';
+    let html='<div class="sfhl-doku-hd">📄 '+escH(text)+'</div>';
+    for(const [gt,gl] of _DOKU_GROUPS){
+      const ls=links.filter(l=>l.type===gt); if(!ls.length) continue;
+      const sub=(gt==='root'&&type==='order')?' ('+escH(cand.root)+')':'';
+      html+='<div class="sfhl-doku-grp">'+escH(gl)+sub+'</div><div class="sfhl-doku-row">';
+      for(const l of ls){
+        const url=l.url.replace(/%s/g, encodeURIComponent(cand[l.type]));
+        html+='<a class="sfhl-doku-lnk" href="'+escH(url)+'" target="_blank" rel="noopener noreferrer" title="'+escH(l.label||l.key)+'">'+escH(l.key||l.label)+'</a>';
+      }
+      html+='</div>';
+    }
+    pop.innerHTML=html;
+    document.body.appendChild(pop);
+    _dokuPop=pop;
+    const r=pop.getBoundingClientRect(); // grob im Viewport halten
+    if(r.right>window.innerWidth-8) pop.style.left=Math.max(8, x-r.width)+'px';
+    if(r.bottom>window.innerHeight-8) pop.style.top=Math.max(8, y-r.height-16)+'px';
+  }
+
   document.addEventListener('mouseup', e=>{
-    if(!loadSelRuleOn()||!isCaseListPage())return;
-    if(e.target.closest && e.target.closest('.sfhl-panel,.sfhl-sel-btn,.sfhl-trigger'))return;
+    if(e.target.closest && e.target.closest('.sfhl-panel,.sfhl-sel-btn,.sfhl-doku-pop,.sfhl-trigger')) return;
     setTimeout(()=>{ // Selektion ist erst nach dem mouseup final
       const sel=window.getSelection();
       const t=(sel?sel.toString():'').trim().replace(/\s+/g,' ');
       if(t.length<2||t.length>80){ hideSelButton(); return; }
-      showSelButton(e.pageX+6, e.pageY+10, t);
+      const ct = loadDokuOn() ? detectCodeType(t) : null;
+      if(ct){ showSelButton(e.pageX+6, e.pageY+10, '📄 Doku-Links', '„'+t+'" — Dokumentations-Links öffnen', ()=>showDokuPopup(e.pageX+6, e.pageY+10, t, ct)); return; }
+      if(loadSelRuleOn() && isCaseListPage()){ showSelButton(e.pageX+6, e.pageY+10, '➕ Regel aus Auswahl', '„'+t+'" als Markierungs-Regel anlegen', ()=>createRuleFromSelection(t)); return; }
+      hideSelButton();
     },10);
   });
-  document.addEventListener('mousedown', e=>{ if(_selBtn && !(e.target.closest && e.target.closest('.sfhl-sel-btn'))) hideSelButton(); }, true);
+  document.addEventListener('mousedown', e=>{
+    if(_selBtn && !(e.target.closest && e.target.closest('.sfhl-sel-btn'))) hideSelButton();
+    if(_dokuPop && !(e.target.closest && e.target.closest('.sfhl-doku-pop'))) hideDokuPopup();
+  }, true);
   function snapshotMarked() { const set=new Set();document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||c.textContent||'');set.add(t);});return set; }
   function highlightAndBlink(snap) {
     highlightRows(true);
