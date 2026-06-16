@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.6.0
+// @version      4.6.1
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,11 +19,19 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.6.0';
+  const VERSION = '4.6.1';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
   const CHANGELOG = {
+    '4.6.1': {
+      de: [
+        'Doku-Lookup: Seriennummern werden jetzt zuverlässig erkannt (vorher teils als Produkt-Root → falsche Links). Das Popup zeigt die erkannte Gruppe zuerst; alle anderen Typen lassen sich über „▸ Andere Typen" aufklappen.',
+      ],
+      en: [
+        'Doc lookup: serial numbers are now detected reliably (previously sometimes treated as product root → wrong links). The popup shows the detected group first; all other types expand via “▸ Other types”.',
+      ],
+    },
     '4.6.0': {
       de: [
         'Neu: Geräte-Doku-Lookup. Gerätecode markieren (Produkt-Root, Seriennummer, Auftrag oder Ordercode) → „📄 Doku-Links" öffnet ein Popup mit passenden Links. Link-Vorlagen werden per Config-Datei importiert (Einstellungen → Geräte-Doku); es sind keine im Skript hinterlegt.',
@@ -1439,6 +1447,8 @@
     .sfhl-doku-row{display:flex;flex-wrap:wrap;gap:5px}
     .sfhl-doku-lnk{display:inline-block;font-size:11.5px;font-weight:600;color:#0176d3;background:#eef4ff;border:1px solid #cfe3fb;border-radius:5px;padding:3px 9px;text-decoration:none;cursor:pointer}
     .sfhl-doku-lnk:hover{background:#0176d3;color:#fff;border-color:#0176d3}
+    .sfhl-doku-more{margin-top:8px;font-size:11px;font-weight:600;color:#0176d3;cursor:pointer;user-select:none}
+    .sfhl-doku-more:hover{text-decoration:underline}
     /* #4 Header-Icon in der SLDS-Kopfleiste */
     .sfhl-hdr-item .sfhl-hdr-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;min-width:2rem;background:transparent;border:none;cursor:pointer;color:inherit;padding:0}
     .sfhl-hdr-mark{display:inline-flex;width:20px;height:20px}
@@ -3972,17 +3982,17 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   function detectCodeType(s){
     const t=(s||'').trim();
     if(!t||t.length<3||t.length>40||/\s/.test(t)) return null;
-    if(/^[A-Za-z]{2}\d{7,10}$/.test(t)) return 'serial';                                    // MC023616000
     if(/^[A-Za-z0-9]{2,}-[A-Za-z0-9.\/]{2,}$/.test(t) && /[A-Za-z]/.test(t)) return 'order'; // RSG30-A1A3ABA1
     if(/^\d{8,12}$/.test(t)) return 'auftrag';                                               // 3800345039
-    if(/^[A-Za-z0-9]{3,14}$/.test(t) && /[A-Za-z]/.test(t) && /\d/.test(t)) return 'root';   // FMR60B, CM442, 5P3B
+    if(/^[A-Za-z0-9]+$/.test(t) && /[A-Za-z]/.test(t) && /\d/.test(t)) {
+      return t.length >= 9 ? 'serial' : 'root';  // lang+alphanum = Seriennr (MC023616000), kurz = Produkt-Root (FMR60B)
+    }
     return null;
   }
+  // Wert je Typ — Popup kann alle Typen anbieten, nicht nur den erkannten.
   function dokuCandidates(type, text){
-    const c = { free: text };
-    if(type==='order'){ c.order = text; c.root = text.split('-')[0]; }
-    else if(type){ c[type] = text; }
-    return c;
+    const root = (type==='order') ? text.split('-')[0] : text;
+    return { root, serial:text, auftrag:text, order:text, free:text };
   }
   const _DOKU_GROUPS = [['root','Produkt-Root'],['order','Ordercode'],['serial','Seriennummer'],['auftrag','Auftragsnummer'],['free','Suche']];
   let _dokuPop=null;
@@ -3990,24 +4000,34 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   function showDokuPopup(x,y,text,type){
     hideDokuPopup();
     const cand = dokuCandidates(type, text);
-    const links = loadDokuLinks().filter(l => cand[l.type] !== undefined);
-    if(!links.length){ toast('Keine Doku-Vorlagen geladen — bitte Config in den Einstellungen importieren','info',4500); return; }
-    const pop=document.createElement('div'); pop.className='sfhl-doku-pop';
-    pop.style.left=Math.round(x)+'px'; pop.style.top=Math.round(y)+'px';
-    let html='<div class="sfhl-doku-hd">📄 '+escH(text)+'</div>';
-    for(const [gt,gl] of _DOKU_GROUPS){
-      const ls=links.filter(l=>l.type===gt); if(!ls.length) continue;
-      const sub=(gt==='root'&&type==='order')?' ('+escH(cand.root)+')':'';
-      html+='<div class="sfhl-doku-grp">'+escH(gl)+sub+'</div><div class="sfhl-doku-row">';
+    const all = loadDokuLinks();
+    if(!all.length){ toast('Keine Doku-Vorlagen geladen — bitte Config in den Einstellungen importieren','info',4500); return; }
+    const label = gt => (_DOKU_GROUPS.find(g=>g[0]===gt)||[gt,gt])[1];
+    const groupHtml = gt => {
+      const ls = all.filter(l=>l.type===gt); if(!ls.length) return '';
+      const sub = (gt==='root'&&type==='order') ? ' ('+escH(cand.root)+')' : '';
+      let h='<div class="sfhl-doku-grp">'+escH(label(gt))+sub+'</div><div class="sfhl-doku-row">';
       for(const l of ls){
         const url=l.url.replace(/%s/g, encodeURIComponent(cand[l.type]));
-        html+='<a class="sfhl-doku-lnk" href="'+escH(url)+'" target="_blank" rel="noopener noreferrer" title="'+escH(l.label||l.key)+'">'+escH(l.key||l.label)+'</a>';
+        h+='<a class="sfhl-doku-lnk" href="'+escH(url)+'" target="_blank" rel="noopener noreferrer" title="'+escH(l.label||l.key)+'">'+escH(l.key||l.label)+'</a>';
       }
-      html+='</div>';
-    }
+      return h+'</div>';
+    };
+    // erkannte Gruppe(n) zuerst, dann der Rest (über „Andere Typen" aufklappbar)
+    const order=['root','order','serial','auftrag','free'];
+    const prim = type==='order' ? ['order','root','free'] : (type ? [type,'free'] : ['free']);
+    let primHtml='', secHtml='';
+    for(const gt of order){ if(prim.includes(gt)) primHtml+=groupHtml(gt); }
+    for(const gt of order){ if(!prim.includes(gt)) secHtml+=groupHtml(gt); }
+    let html='<div class="sfhl-doku-hd">📄 '+escH(text)+'</div>'+primHtml;
+    if(secHtml.trim()) html+='<div class="sfhl-doku-more">▸ Andere Typen</div><div class="sfhl-doku-sec" style="display:none">'+secHtml+'</div>';
+    const pop=document.createElement('div'); pop.className='sfhl-doku-pop';
+    pop.style.left=Math.round(x)+'px'; pop.style.top=Math.round(y)+'px';
     pop.innerHTML=html;
     document.body.appendChild(pop);
     _dokuPop=pop;
+    const more=pop.querySelector('.sfhl-doku-more');
+    if(more) more.addEventListener('mousedown', ev=>{ ev.preventDefault(); ev.stopPropagation(); const sec=pop.querySelector('.sfhl-doku-sec'); if(sec){sec.style.display='block'; more.style.display='none';} });
     const r=pop.getBoundingClientRect(); // grob im Viewport halten
     if(r.right>window.innerWidth-8) pop.style.left=Math.max(8, x-r.width)+'px';
     if(r.bottom>window.innerHeight-8) pop.style.top=Math.max(8, y-r.height-16)+'px';
