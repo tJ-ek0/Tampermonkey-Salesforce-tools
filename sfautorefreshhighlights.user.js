@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.5.0
+// @version      4.5.1
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,11 +19,19 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.5.0';
+  const VERSION = '4.5.1';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
   const CHANGELOG = {
+    '4.5.1': {
+      de: [
+        'Fix: Die Schalter in den Einstellungen (Vorschau, Ton, Benachrichtigung, Legende u. a.) ließen sich nicht per Klick umschalten — jetzt behoben.',
+      ],
+      en: [
+        'Fix: the settings toggles (preview, sound, notification, legend, etc.) could not be switched by clicking — now fixed.',
+      ],
+    },
     '4.5.0': {
       de: [
         'SLA-Alarm: Regeln können einzeln einen 🔔-Alarm bekommen (Glocke in der Markierungs-Liste). Neuer Treffer beim Auto-Refresh → Tab-Titel blinkt, optional Ton + Desktop-Benachrichtigung.',
@@ -1381,7 +1389,7 @@
     .sfhl-rf-body .rfr{display:flex;align-items:center;gap:10px;margin-bottom:8px} .sfhl-rf-body label{font-size:12px;color:#6b7280;white-space:nowrap}
     .sfhl-rf-body input[type="number"]{width:70px;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;text-align:center;-moz-appearance:textfield}
     .sfhl-rf-body input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none}
-    .sfhl-tgl{position:relative;width:36px;height:20px;display:inline-block;flex-shrink:0} .sfhl-tgl input{opacity:0;width:0;height:0;position:absolute}
+    .sfhl-tgl{position:relative;width:36px;height:20px;display:inline-block;flex-shrink:0} .sfhl-tgl input{opacity:0;position:absolute;inset:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
     .sfhl-tgl .sl{position:absolute;inset:0;background:#d1d5db;border-radius:99px;cursor:pointer;transition:background .2s}
     .sfhl-tgl .sl::before{content:'';position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.15)}
     .sfhl-tgl input:checked+.sl{background:#0176d3} .sfhl-tgl input:checked+.sl::before{transform:translateX(16px)}
