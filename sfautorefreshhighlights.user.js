@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.4.0
+// @version      4.5.0
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,11 +19,35 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.4.0';
+  const VERSION = '4.5.0';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
   const CHANGELOG = {
+    '4.5.0': {
+      de: [
+        'SLA-Alarm: Regeln können einzeln einen 🔔-Alarm bekommen (Glocke in der Markierungs-Liste). Neuer Treffer beim Auto-Refresh → Tab-Titel blinkt, optional Ton + Desktop-Benachrichtigung.',
+        'Farb-Legende über der Case-Liste: zeigt die aktiven Markierungen mit Trefferzahl.',
+        'Regel aus Auswahl: Listentext markieren → Schaltfläche legt direkt eine Markierungs-Regel an.',
+        'Button-Position wählbar (Einstellungen): SF-Kopfleiste, schwebend oder ausgeblendet (Alt+R bleibt).',
+        'Optik an Salesforce angeglichen (SLDS-Blau, SLDS-Toasts).',
+      ],
+      en: [
+        'SLA alarm: rules can individually get a 🔔 alarm (bell in the highlight list). New match on auto-refresh → tab title blinks, optional sound + desktop notification.',
+        'Color legend above the case list: shows active highlights with hit counts.',
+        'Rule from selection: select list text → a button creates a highlight rule directly.',
+        'Button position is configurable (settings): SF header, floating or hidden (Alt+R stays).',
+        'Look aligned with Salesforce (SLDS blue, SLDS toasts).',
+      ],
+    },
+    '4.4.1': {
+      de: [
+        'Langzeit-Bug behoben: Anrede und Nachname werden jetzt zuverlässig erkannt (z. B. „Guten Tag Frau Abohamzeh,"). Bisher las das Skript wegen Salesforce-Shadow-DOM/Slots den Feldwert nicht und fügte UI-Text wie „50× bearbeiten" ein. Zusätzliches Sicherheitsnetz: lässt sich kein gültiger Name lesen, bleibt das Feld leer (mit Hinweis) statt Müll einzufügen.',
+      ],
+      en: [
+        'Long-standing bug fixed: salutation and last name are now read reliably (e.g. “Hello Mrs Abohamzeh,”). Previously the script failed to read the field value through Salesforce shadow DOM/slots and inserted UI text like “50× edit”. Added safety net: if no valid name can be read, the field stays blank (with a notice) instead of inserting junk.',
+      ],
+    },
     '4.4.0': {
       de: [
         'Sicherheitsnetz: Warn-Hinweis, wenn Anrede, Nachname oder Kontaktname beim Einfügen leer bleiben.',
@@ -159,7 +183,7 @@
   function loadRules() {
     try {
       let raw = localStorage.getItem(LS_CFG);
-      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.map(e => ({ id:e.id||uid(), term:String(e.term||''), color:safeColor(e.color), enabled:e.enabled!==false, folder:e.folder||null })); }
+      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.map(e => ({ id:e.id||uid(), term:String(e.term||''), color:safeColor(e.color), enabled:e.enabled!==false, folder:e.folder||null, alarm:e.alarm===true })); }
       raw = localStorage.getItem(LS_CFG_OLD);
       if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.slice().sort((a,b)=>(b.priority||0)-(a.priority||0)).map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:true,folder:null})); }
     } catch {}
@@ -242,6 +266,17 @@
   // Feature 2 (v4.4.0): Vorschau vor dem Einfügen (optional, Default aus)
   function loadPreviewOn() { return localStorage.getItem(LS_PREVIEW_ON) === '1'; }
   function savePreviewOn(on) { localStorage.setItem(LS_PREVIEW_ON, on?'1':'0'); }
+  // v4.5.0: SLA-Alarm-Kanäle (sfhl_sla_blink/sound/notify). Blink default an, Rest aus.
+  function loadSla(k) { const v = localStorage.getItem('sfhl_sla_' + k); return k === 'blink' ? v !== '0' : v === '1'; }
+  function saveSla(k, on) { localStorage.setItem('sfhl_sla_' + k, on ? '1' : '0'); }
+  // v4.5.0: Listen-Features (Farb-Legende #2, Regel aus Auswahl #3) — beide default an.
+  function loadLegendOn() { return localStorage.getItem('sfhl_legend') !== '0'; }
+  function saveLegendOn(on) { localStorage.setItem('sfhl_legend', on ? '1' : '0'); }
+  function loadSelRuleOn() { return localStorage.getItem('sfhl_selrule') !== '0'; }
+  function saveSelRuleOn(on) { localStorage.setItem('sfhl_selrule', on ? '1' : '0'); }
+  // v4.5.0 #4: Button-Position (header | floating | hidden). Default floating = bisheriges Verhalten.
+  function loadBtnPos() { const v = localStorage.getItem('sfhl_btn_pos'); return (v === 'header' || v === 'hidden') ? v : 'floating'; }
+  function saveBtnPos(v) { localStorage.setItem('sfhl_btn_pos', v); }
   // FIX #7: loadDefaultLang cachen
   let _cachedLang = null;
   function loadDefaultLang() { if (_cachedLang === null) _cachedLang = localStorage.getItem(LS_DEF_LANG) || 'de'; return _cachedLang; }
@@ -550,8 +585,27 @@
       if (!n) return;
       if (n.nodeType === 3) { out += n.textContent; return; }
       if (n.nodeType !== 1) return;
-      Array.from(n.childNodes || []).forEach(walk);
-      if (n.shadowRoot) Array.from(n.shadowRoot.childNodes || []).forEach(walk);
+      // v4.5.0: Assistive-Text überspringen. SF rendert in Inline-Edit-Felder den
+      // versteckten Bleistift-Text "<Label> bearbeiten" (class slds-assistive-text).
+      // Der ist kein sichtbarer Feldwert und führte sonst zu "Guten Tag Name bearbeiten,".
+      if (n.classList && n.classList.contains('slds-assistive-text')) return;
+      // v4.5.0: <slot> auflösen. SF-LWC (z.B. records-record-layout-output-field)
+      // projizieren den Feldwert per <slot name="outputField"> aus dem Light-DOM des
+      // Hosts in den Shadow-Tree. Ohne assignedNodes() sieht getDeepText nur das Label
+      // und verfehlt den Wert komplett ("Name" statt "Frau Ronja Isert").
+      if (n.tagName === 'SLOT' && typeof n.assignedNodes === 'function') {
+        const assigned = n.assignedNodes();
+        (assigned && assigned.length ? assigned : Array.from(n.childNodes || [])).forEach(walk);
+        return;
+      }
+      // Flattened-Tree-Semantik: hat das Element einen Shadow-Root, NUR den Shadow-Tree
+      // laufen — die Light-DOM-Kinder werden über <slot> an ihrer projizierten Position
+      // eingezogen. Sonst würde slotted Content doppelt gezählt.
+      if (n.shadowRoot) {
+        Array.from(n.shadowRoot.childNodes || []).forEach(walk);
+      } else {
+        Array.from(n.childNodes || []).forEach(walk);
+      }
     })(el);
     return out.replace(/\s+/g, ' ').trim();
   }
@@ -817,13 +871,17 @@
     const mob     = readOutputFieldValue(section, 'MobilePhone');
 
     // Methode 2: Label-Fallback wenn field-name nicht gefunden
-    const salFb   = sal   || readFieldFromContainer(section, ['anrede','salutation']);
-    const fnFb    = fn    || readFieldFromContainer(section, ['vorname','first name']);
-    const lnFb    = ln    || readFieldFromContainer(section, ['nachname','last name']);
-    const nameFb  = nameRaw || readFieldFromContainer(section, ['name','kontaktname','contact name']);
+    // v4.5.0: Jeden gescrapten Namens-/Anrede-Wert gegen UI-Müll absichern. isLikelyPersonName
+    // wirft "Name bearbeiten", "50× bearbeiten" etc. raus (›bearbeiten‹/›×‹ stehen auf der
+    // Blacklist) und lässt echte Namen + Anreden (Herr/Frau) durch. Lieber leer als Müll.
+    const clean   = v => isLikelyPersonName(v) ? v : '';
+    const salFb   = clean(sal   || readFieldFromContainer(section, ['anrede','salutation']));
+    const fnFb    = clean(fn    || readFieldFromContainer(section, ['vorname','first name']));
+    const lnFb    = clean(ln    || readFieldFromContainer(section, ['nachname','last name']));
+    const nameFb  = clean(nameRaw || readFieldFromContainer(section, ['name','kontaktname','contact name']));
 
     if (!nameFb && !lnFb && !salFb) {
-      console.warn('[SFHL] Section gefunden aber alle Felder leer — kein sinnvoller Wert lesbar');
+      console.warn('[SFHL] Section gefunden aber kein valider Name/Anrede lesbar (nur leer/UI-Text)');
       return null;
     }
 
@@ -1068,11 +1126,19 @@
     const _api       = _contactApiCache;
     const _section   = !_api ? readContactFromDetailsSection() : null;
     const _src       = _api || _section;
-    const kontakt    = (_src && _src.Name) || readContactName();
+    // v4.5.0: Titelunabhängiger Fallback. Findet findContactDetailsSection() die Karte
+    // nicht (Titel ≠ "Kontaktdetails"), den Kontakt-Anzeigenamen direkt aus dem "Name"-Feld
+    // lesen. Das enthält die Anrede ("Frau Elham Abohamzeh") und ist dank Slot-Auflösung in
+    // getDeepText jetzt lesbar; parseContactName zerlegt daraus Anrede + Nachname.
+    let kontakt      = (_src && _src.Name) || readContactName();
+    if (!kontakt) { const _nm = readSFField(['kontaktname','contact name','name']); if (isLikelyPersonName(_nm)) kontakt = _nm; }
     const _parsed    = !_src && kontakt ? parseContactName(kontakt) : null;
     // FIX #4: console.log entfernt
-    const anrede     = (_src && _src.Salutation)   || readSFField(['anrede','salutation']) || (_parsed?.salutation || '');
-    const nachname   = (_src && _src.LastName)     || readSFField(['nachname','last name']) || (_parsed?.lastName || '');
+    // v4.5.0: generische readSFField-Fallbacks für Name/Anrede gegen UI-Müll absichern
+    // (z.B. "50× bearbeiten" aus einem Related-List-Zähler). Nur validierte Werte zulassen.
+    const _validName = v => isLikelyPersonName(v) ? v : '';
+    const anrede     = (_src && _src.Salutation)   || _validName(readSFField(['anrede','salutation'])) || (_parsed?.salutation || '');
+    const nachname   = (_src && _src.LastName)     || _validName(readSFField(['nachname','last name'])) || (_parsed?.lastName || '');
     const vorname    = (_src && _src.FirstName)    || (_parsed?.firstName || (kontakt ? kontakt.split(' ').slice(0, -1).join(' ') : ''));
     const telefon    = (_src && _src.Phone)        || readSFField(['telefon','phone']);
     const mobil      = (_src && _src.MobilePhone)  || readSFField(['mobil','mobile']);
@@ -1174,11 +1240,15 @@
     .sfhl-new-match td,.sfhl-new-match [role="gridcell"]{animation:sfhl-blink .5s ease 3}
 
     /* Toast */
-    .sfhl-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(8px);padding:8px 18px;border-radius:8px;z-index:2147483647;font:500 12.5px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;pointer-events:none;opacity:0;transition:opacity .2s,transform .2s}
+    /* #6 Toasts im SLDS-Look (Theme-Farben, 0.25rem, Icon je Typ). Unten-mittig → keine Kollision mit SF-Toasts (oben-mittig). */
+    .sfhl-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(8px);display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:.25rem;z-index:2147483647;font:400 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#fff;pointer-events:none;opacity:0;box-shadow:0 2px 12px rgba(0,0,0,.25);transition:opacity .2s,transform .2s}
     .sfhl-toast.vis{opacity:1;transform:translateX(-50%) translateY(0)}
-    .sfhl-toast--info{background:#1e293b;color:#e2e8f0} .sfhl-toast--success{background:#065f46;color:#d1fae5} .sfhl-toast--error{background:#991b1b;color:#fee2e2}
-    .sfhl-toast.has-action{pointer-events:auto;display:flex;align-items:center;gap:12px}
-    .sfhl-toast-act{border:1px solid rgba(255,255,255,.35);background:transparent;color:inherit;border-radius:5px;padding:2px 10px;font:600 11.5px/1.6 inherit;cursor:pointer;white-space:nowrap}
+    .sfhl-toast::before{font-size:14px;font-weight:700;line-height:1;flex-shrink:0}
+    .sfhl-toast--info{background:#16325c} .sfhl-toast--info::before{content:'\\2139'}
+    .sfhl-toast--success{background:#2e844a} .sfhl-toast--success::before{content:'\\2713'}
+    .sfhl-toast--error{background:#ba0517} .sfhl-toast--error::before{content:'\\26A0'}
+    .sfhl-toast.has-action{pointer-events:auto;gap:12px}
+    .sfhl-toast-act{border:1px solid rgba(255,255,255,.5);background:transparent;color:inherit;border-radius:.25rem;padding:3px 12px;font:600 12px/1.5 inherit;cursor:pointer;white-space:nowrap}
 
     /* Insert-Vorschau-Dialog (Feature 2, v4.4.0) */
     .sfhl-ovl{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:2147483647;display:flex;align-items:center;justify-content:center;font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
@@ -1189,13 +1259,13 @@
     .sfhl-dlg-fld{margin-bottom:12px}
     .sfhl-dlg-fld label{display:block;font-size:11.5px;font-weight:600;color:#6b7280;margin-bottom:4px}
     .sfhl-dlg-fld input,.sfhl-dlg-fld textarea{width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;font-family:inherit}
-    .sfhl-dlg-fld input:focus,.sfhl-dlg-fld textarea:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.12)}
+    .sfhl-dlg-fld input:focus,.sfhl-dlg-fld textarea:focus{outline:none;border-color:#0176d3;box-shadow:0 0 0 2px rgba(1,118,211,.12)}
     .sfhl-dlg-pv-l{font-size:11.5px;font-weight:600;color:#6b7280;margin:4px 0 6px}
     .sfhl-dlg-pv{border:1px solid #e5e7eb;border-radius:8px;padding:12px;background:#f9fafb;max-height:34vh;overflow:auto;font-size:13px;line-height:1.5;word-break:break-word}
     .sfhl-dlg-btn{border:none;border-radius:7px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer}
-    .sfhl-dlg-btn--p{background:#4f46e5;color:#fff} .sfhl-dlg-btn--p:hover{background:#4338ca}
+    .sfhl-dlg-btn--p{background:#0176d3;color:#fff} .sfhl-dlg-btn--p:hover{background:#014486}
     .sfhl-dlg-btn--s{background:#f3f4f6;color:#374151} .sfhl-dlg-btn--s:hover{background:#e5e7eb}
-    .sfhl-toast-act:hover{background:rgba(255,255,255,.12)}
+    .sfhl-toast-act:hover{background:rgba(255,255,255,.18)}
 
     /* Trigger pill */
     .sfhl-trigger{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:none;align-items:center;gap:7px;padding:0 14px;height:36px;border-radius:99px;background:#fff;border:1px solid #e5e7eb;color:#374151;font:500 12px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;cursor:pointer;user-select:none;box-shadow:0 1px 3px rgba(0,0,0,.08),0 8px 24px rgba(0,0,0,.06);transition:box-shadow .15s,transform .15s,border-color .15s}
@@ -1217,13 +1287,13 @@
     .sfhl-hdr-acts{display:flex;align-items:center;gap:2px}
     .sfhl-ib{width:30px;height:30px;border-radius:6px;background:transparent;cursor:pointer;color:#6b7280;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s;position:relative}
     .sfhl-ib:hover{background:#f3f4f6;color:#111} .sfhl-ib svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-    .sfhl-ib.sfhl-help-btn.active{background:#eef2ff;color:#6366f1}
-    .sfhl-ib.sfhl-settings-btn.active{background:#f5f3ff;color:#7c3aed}
+    .sfhl-ib.sfhl-help-btn.active{background:#eef4ff;color:#0176d3}
+    .sfhl-ib.sfhl-settings-btn.active{background:#eef4ff;color:#0176d3}
     .sfhl-tabs{display:flex;gap:0;margin:0 -16px;padding:0 16px}
     .sfhl-tab{padding:8px 16px;font-size:12.5px;font-weight:500;color:#9ca3af;cursor:pointer;border-bottom:2px solid transparent;transition:color .12s,border-color .12s;white-space:nowrap}
-    .sfhl-tab:hover{color:#374151} .sfhl-tab.active{color:#4f46e5;border-bottom-color:#4f46e5}
+    .sfhl-tab:hover{color:#374151} .sfhl-tab.active{color:#0176d3;border-bottom-color:#0176d3}
     .sfhl-tab-badge{font-size:10px;font-weight:600;background:#e5e7eb;color:#6b7280;padding:0 5px;border-radius:99px;margin-left:4px}
-    .sfhl-tab.active .sfhl-tab-badge{background:#eef2ff;color:#4f46e5}
+    .sfhl-tab.active .sfhl-tab-badge{background:#eef4ff;color:#0176d3}
 
     /* Tab content */
     .sfhl-tab-content{display:none;flex:1;flex-direction:column;min-height:0;overflow:hidden}
@@ -1240,7 +1310,7 @@
     /* Search bar (shared) */
     .sfhl-search{padding:8px 16px;border-bottom:1px solid #f3f4f6;flex-shrink:0}
     .sfhl-search input{width:100%;padding:6px 10px 6px 30px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") 10px center no-repeat;transition:border-color .12s}
-    .sfhl-search input:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.1)}
+    .sfhl-search input:focus{outline:none;border-color:#0176d3;box-shadow:0 0 0 2px rgba(1,118,211,.1)}
 
     /* Rules tab styles */
     .sfhl-colhdr{display:grid;grid-template-columns:20px minmax(0,1fr) 28px auto;gap:4px;padding:6px 16px;font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #f3f4f6;flex-shrink:0}
@@ -1248,43 +1318,61 @@
     .sfhl-list::-webkit-scrollbar{width:4px} .sfhl-list::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:4px}
     .sfhl-row{display:grid;grid-template-columns:20px 22px minmax(0,1fr) 28px auto;gap:4px;padding:5px 16px;align-items:center;transition:background .12s;cursor:grab;border-left:3px solid transparent}
     .sfhl-row:hover{background:#f9fafb} .sfhl-row.disabled{opacity:.45} .sfhl-row.disabled .sfhl-r-term{text-decoration:line-through;color:#9ca3af}
-    .sfhl-row.dragging{opacity:.3;background:#eef2ff} .sfhl-row.drag-over-top{border-top:2px solid #6366f1} .sfhl-row.drag-over-bot{border-bottom:2px solid #6366f1}
+    .sfhl-row.dragging{opacity:.3;background:#eef4ff} .sfhl-row.drag-over-top{border-top:2px solid #0176d3} .sfhl-row.drag-over-bot{border-bottom:2px solid #0176d3}
     .sfhl-grip{color:#d1d5db;cursor:grab;display:flex;align-items:center;justify-content:center}
     .sfhl-grip svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
     .sfhl-row:hover .sfhl-grip{color:#9ca3af}
     .sfhl-r-term{width:100%;padding:4px 8px;border:1px solid transparent;border-radius:5px;font-size:12.5px;background:transparent;color:#1a1a1a;transition:border-color .12s,background .12s;text-overflow:ellipsis}
-    .sfhl-r-term:hover{border-color:#e5e7eb;background:#fff} .sfhl-r-term:focus{outline:none;border-color:#6366f1;background:#fff;box-shadow:0 0 0 2px rgba(99,102,241,.1)}
+    .sfhl-r-term:hover{border-color:#e5e7eb;background:#fff} .sfhl-r-term:focus{outline:none;border-color:#0176d3;background:#fff;box-shadow:0 0 0 2px rgba(1,118,211,.1)}
     .sfhl-sw{position:relative;width:24px;height:24px;border-radius:5px;cursor:pointer;overflow:visible;border:2px solid #fff;box-shadow:0 0 0 1px #e5e7eb;transition:box-shadow .12s,transform .1s;margin:0 auto}
-    .sfhl-sw:hover{box-shadow:0 0 0 1px #a5b4fc;transform:scale(1.1)}
+    .sfhl-sw:hover{box-shadow:0 0 0 1px #90d0fe;transform:scale(1.1)}
     .sfhl-sw .sfhl-sw-fill{position:absolute;inset:0;border-radius:3px} .sfhl-sw input[type="color"]{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
     .sfhl-palette{position:fixed;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.14);padding:8px;z-index:2147483647;opacity:0;pointer-events:none;transition:opacity .12s;min-width:200px}
     .sfhl-palette.vis{opacity:1;pointer-events:auto}
     .sfhl-palette-label{font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px}
     .sfhl-palette-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:8px}
     .sfhl-preset{width:30px;height:30px;border-radius:6px;border:2px solid transparent;cursor:pointer;transition:border-color .1s,transform .1s;position:relative}
-    .sfhl-preset:hover{transform:scale(1.12);border-color:#a5b4fc} .sfhl-preset.active{border-color:#4f46e5;box-shadow:0 0 0 1px #4f46e5}
+    .sfhl-preset:hover{transform:scale(1.12);border-color:#90d0fe} .sfhl-preset.active{border-color:#0176d3;box-shadow:0 0 0 1px #0176d3}
     .sfhl-preset-name{position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);font-size:7px;color:#9ca3af;white-space:nowrap;opacity:0;transition:opacity .1s;pointer-events:none}
     .sfhl-preset:hover .sfhl-preset-name{opacity:1}
     .sfhl-palette-custom{display:flex;align-items:center;gap:6px;padding:6px 8px 2px;border-top:1px solid #f3f4f6;margin:0 -8px;cursor:pointer;font-size:11px;color:#6b7280;transition:color .1s}
-    .sfhl-palette-custom:hover{color:#4f46e5} .sfhl-palette-custom svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
+    .sfhl-palette-custom:hover{color:#0176d3} .sfhl-palette-custom svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
     .sfhl-row-acts{display:flex;gap:3px;align-items:center}
     .sfhl-ra{height:22px;border:none;border-radius:4px;background:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:3px;transition:color .1s,background .1s;padding:0 5px;font-size:10.5px;font-weight:500;white-space:nowrap}
     .sfhl-ra svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
     .sfhl-ra.toggle-on{color:#16a34a} .sfhl-ra.toggle-on svg{fill:#16a34a;stroke:none}
     .sfhl-ra.toggle-off{color:#9ca3af} .sfhl-ra.toggle-off svg{stroke:#9ca3af}
+    .sfhl-ra.alarm-on{color:#dc2626} .sfhl-ra.alarm-on svg{stroke:#dc2626;fill:#fee2e2}
+    .sfhl-ra.alarm-off svg{stroke:#cbd5e1;fill:none} .sfhl-ra.alarm-off:hover svg{stroke:#dc2626}
+    /* #2 Farb-Legende über der Case-Liste */
+    .sfhl-legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 10px;margin:0 0 4px;background:#f8f9fb;border:1px solid #e5e7eb;border-radius:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    .sfhl-legend-ttl{font-size:10.5px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.4px;margin-right:2px}
+    .sfhl-legend-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#374151;background:#fff;border:1px solid #e5e7eb;border-radius:99px;padding:2px 8px}
+    .sfhl-legend-chip b{color:#0176d3;font-size:11px}
+    .sfhl-legend-sw{width:10px;height:10px;border-radius:3px;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+    .sfhl-legend-bell{font-size:10px}
+    /* #3 „Regel aus Auswahl"-Button */
+    .sfhl-sel-btn{position:absolute;z-index:2147483646;background:#0176d3;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:12px;font-weight:600;padding:5px 10px;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;user-select:none;white-space:nowrap}
+    .sfhl-sel-btn:hover{background:#014486}
+    /* #4 Header-Icon in der SLDS-Kopfleiste */
+    .sfhl-hdr-item .sfhl-hdr-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;min-width:2rem;background:transparent;border:none;cursor:pointer;color:inherit;padding:0}
+    .sfhl-hdr-mark{display:inline-flex;width:20px;height:20px}
+    .sfhl-hdr-mark svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+    .sfhl-hdr-btn .sfhl-hdr-dot{position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:#10b981;box-shadow:0 0 0 1.5px rgba(255,255,255,.6)}
+    .sfhl-hdr-btn:hover{opacity:.75}
     .sfhl-ra:hover{background:#f3f4f6} .sfhl-ra.del{color:#c4c4c4;padding:0 3px} .sfhl-ra.del:hover{color:#ef4444;background:#fef2f2}
     .sfhl-add-bar{display:flex;gap:6px;padding:8px 16px;border-top:1px solid #f3f4f6;flex-shrink:0}
     .sfhl-add-toggle{display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px dashed #d1d5db;border-radius:6px;background:none;cursor:pointer;color:#9ca3af;font-size:12px;transition:all .15s;width:100%;justify-content:center}
-    .sfhl-add-toggle:hover{border-color:#6366f1;color:#6366f1;background:#f5f3ff}
+    .sfhl-add-toggle:hover{border-color:#0176d3;color:#0176d3;background:#eef4ff}
     .sfhl-add-toggle svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
     .sfhl-add-form{display:none;padding:10px 16px;border-top:1px solid #f3f4f6;background:#fafafa;flex-shrink:0} .sfhl-add-form.vis{display:block}
     .sfhl-add-row{display:grid;grid-template-columns:minmax(0,1fr) 32px;gap:6px;align-items:center}
     .sfhl-add-form input[type="text"]{padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12.5px;width:100%}
-    .sfhl-add-form input[type="text"]:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.1)}
+    .sfhl-add-form input[type="text"]:focus{outline:none;border-color:#0176d3;box-shadow:0 0 0 2px rgba(1,118,211,.1)}
     .sfhl-add-acts{display:flex;gap:6px;margin-top:8px;justify-content:space-between;align-items:center}
-    .sfhl-match-badge{font-size:11px;color:#6b7280;display:flex;align-items:center;gap:4px} .sfhl-match-badge .num{font-weight:600;color:#4f46e5}
+    .sfhl-match-badge{font-size:11px;color:#6b7280;display:flex;align-items:center;gap:4px} .sfhl-match-badge .num{font-weight:600;color:#0176d3}
     .sfhl-btn-sm{padding:5px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid #e5e7eb;background:#fff;color:#374151;transition:all .12s} .sfhl-btn-sm:hover{background:#f9fafb}
-    .sfhl-btn-primary{background:#4f46e5!important;border-color:#4f46e5!important;color:#fff!important} .sfhl-btn-primary:hover{background:#4338ca!important}
+    .sfhl-btn-primary{background:#0176d3!important;border-color:#0176d3!important;color:#fff!important} .sfhl-btn-primary:hover{background:#014486!important}
     .sfhl-rf-sec{border-top:1px solid #e5e7eb;flex-shrink:0;background:#f9fafb}
     .sfhl-rf-hdr{display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px 16px;cursor:pointer;font-size:12.5px;font-weight:500;color:#374151;transition:background .12s} .sfhl-rf-hdr:hover{background:#f3f4f6}
     .sfhl-rf-hdr svg{width:14px;height:14px;stroke:#9ca3af;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s} .sfhl-rf-hdr svg.rot{transform:rotate(180deg)}
@@ -1296,7 +1384,7 @@
     .sfhl-tgl{position:relative;width:36px;height:20px;display:inline-block;flex-shrink:0} .sfhl-tgl input{opacity:0;width:0;height:0;position:absolute}
     .sfhl-tgl .sl{position:absolute;inset:0;background:#d1d5db;border-radius:99px;cursor:pointer;transition:background .2s}
     .sfhl-tgl .sl::before{content:'';position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 2px rgba(0,0,0,.15)}
-    .sfhl-tgl input:checked+.sl{background:#4f46e5} .sfhl-tgl input:checked+.sl::before{transform:translateX(16px)}
+    .sfhl-tgl input:checked+.sl{background:#0176d3} .sfhl-tgl input:checked+.sl::before{transform:translateX(16px)}
 
     /* ===== Snippets Tab ===== */
     .sfhl-snip-list{flex:1;overflow-y:auto;padding:4px 0;min-height:0}
@@ -1304,13 +1392,13 @@
     .sfhl-snip-row{padding:8px 16px;border-bottom:1px solid #f8f8f8;cursor:pointer;transition:background .1s}
     .sfhl-snip-row:hover{background:#f9fafb}
     .sfhl-snip-row-top{display:flex;align-items:center;gap:8px}
-    .sfhl-snip-trigger{font-family:monospace;font-size:12px;font-weight:600;color:#4f46e5;background:#eef2ff;padding:1px 6px;border-radius:4px;flex-shrink:0}
+    .sfhl-snip-trigger{font-family:monospace;font-size:12px;font-weight:600;color:#0176d3;background:#eef4ff;padding:1px 6px;border-radius:4px;flex-shrink:0}
     .sfhl-snip-label{font-size:12.5px;font-weight:500;color:#1a1a1a;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .sfhl-snip-cat{font-size:10px;color:#9ca3af;flex-shrink:0}
     .sfhl-snip-preview{font-size:11px;color:#9ca3af;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
     .sfhl-snip-acts{display:flex;gap:2px;flex-shrink:0;margin-left:auto}
     .sfhl-snip-copy{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:5px;background:transparent;cursor:pointer;color:#c4c4c4;flex-shrink:0;transition:color .12s,background .12s;padding:0;border:none}
-    .sfhl-snip-copy:hover{color:#4f46e5;background:#eef2ff}
+    .sfhl-snip-copy:hover{color:#0176d3;background:#eef4ff}
     .sfhl-snip-copy svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
     /* Snippet editor (inline) */
@@ -1319,7 +1407,7 @@
     .sfhl-snip-editor .sfhl-field{margin-bottom:8px}
     .sfhl-snip-editor .sfhl-field label{display:block;font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px}
     .sfhl-snip-editor input,.sfhl-snip-editor select{width:100%;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12.5px}
-    .sfhl-snip-editor input:focus,.sfhl-snip-editor select:focus,.sfhl-snip-editor textarea:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.1)}
+    .sfhl-snip-editor input:focus,.sfhl-snip-editor select:focus,.sfhl-snip-editor textarea:focus{outline:none;border-color:#0176d3;box-shadow:0 0 0 2px rgba(1,118,211,.1)}
     .sfhl-snip-editor textarea{width:100%;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:monospace;min-height:100px;resize:vertical;line-height:1.5}
     .sfhl-snip-editor .sfhl-ed-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .sfhl-snip-editor .sfhl-ed-foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb}
@@ -1339,7 +1427,7 @@
     .sfhl-dd-item{display:flex;flex-direction:column;padding:8px 10px;border-radius:6px;cursor:pointer;transition:background .1s}
     .sfhl-dd-item:hover,.sfhl-dd-item.selected{background:#f3f4f6}
     .sfhl-dd-item-top{display:flex;align-items:center;gap:6px}
-    .sfhl-dd-trigger{font-family:monospace;font-size:11px;font-weight:600;color:#4f46e5;background:#eef2ff;padding:1px 5px;border-radius:3px}
+    .sfhl-dd-trigger{font-family:monospace;font-size:11px;font-weight:600;color:#0176d3;background:#eef4ff;padding:1px 5px;border-radius:3px}
     .sfhl-dd-label{font-size:12px;font-weight:500;color:#1a1a1a}
     .sfhl-dd-cat{font-size:10px;color:#9ca3af;margin-left:auto}
     .sfhl-dd-preview{font-size:11px;color:#9ca3af;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1354,37 +1442,37 @@
     .sfhl-cat-body.collapsed{display:none}
 
     /* Folder headers (rules) */
-    .sfhl-folder-hdr{display:flex;align-items:center;gap:6px;padding:5px 12px 5px 16px;cursor:pointer;user-select:none;background:#f5f3ff;border-bottom:1px solid #ede9fe;border-top:1px solid #ede9fe;font-size:11px;font-weight:600;color:#5b21b6;transition:background .12s}
-    .sfhl-folder-hdr:hover{background:#ede9fe}
+    .sfhl-folder-hdr{display:flex;align-items:center;gap:6px;padding:5px 12px 5px 16px;cursor:pointer;user-select:none;background:#eef4ff;border-bottom:1px solid #eef4ff;border-top:1px solid #eef4ff;font-size:11px;font-weight:600;color:#014486;transition:background .12s}
+    .sfhl-folder-hdr:hover{background:#eef4ff}
     .sfhl-folder-hdr .sfhl-chev{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s;flex-shrink:0}
     .sfhl-folder-hdr.collapsed .sfhl-chev{transform:rotate(-90deg)}
     .sfhl-folder-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .sfhl-folder-count{font-size:10px;font-weight:500;color:#7c3aed;opacity:.7;padding:0 4px}
+    .sfhl-folder-count{font-size:10px;font-weight:500;color:#0176d3;opacity:.7;padding:0 4px}
     .sfhl-folder-del{padding:2px 4px;border-radius:4px;color:#a78bfa;transition:color .1s,background .1s;margin-left:4px;display:flex;align-items:center}
     .sfhl-folder-del:hover{color:#dc2626;background:#fef2f2}
     .sfhl-folder-del svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
     .sfhl-folder-body.collapsed{display:none}
     .sfhl-folder-body .sfhl-row{padding-left:28px}
-    .sfhl-folder-hdr.drag-over-folder{background:#ddd6fe!important;outline:2px dashed #7c3aed}
+    .sfhl-folder-hdr.drag-over-folder{background:#ddd6fe!important;outline:2px dashed #0176d3}
     .sfhl-ungrouped-body.drag-over-folder{outline:2px dashed #9ca3af;background:#f9fafb}
     .sfhl-ungrouped-hdr{display:flex;align-items:center;gap:6px;padding:4px 16px;font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #f3f4f6;background:#fafafa;flex-shrink:0}
-    .sfhl-folder-add-btn{display:flex;align-items:center;gap:4px;padding:5px 10px;border:1px dashed #c4b5fd;border-radius:6px;background:none;cursor:pointer;color:#7c3aed;font-size:11px;font-weight:500;transition:all .15s;white-space:nowrap;flex-shrink:0}
-    .sfhl-folder-add-btn:hover{border-color:#7c3aed;background:#f5f3ff}
+    .sfhl-folder-add-btn{display:flex;align-items:center;gap:4px;padding:5px 10px;border:1px dashed #c4b5fd;border-radius:6px;background:none;cursor:pointer;color:#0176d3;font-size:11px;font-weight:500;transition:all .15s;white-space:nowrap;flex-shrink:0}
+    .sfhl-folder-add-btn:hover{border-color:#0176d3;background:#eef4ff}
 
     /* Rich-Text Toolbar */
     .sfhl-rte-wrap{border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;display:none}
     .sfhl-rte-wrap.vis{display:block}
     .sfhl-rte-toolbar{display:flex;gap:2px;padding:4px 6px;background:#f9fafb;border-bottom:1px solid #e5e7eb;flex-wrap:wrap}
     .sfhl-rtb{width:26px;height:26px;border:none;border-radius:4px;background:transparent;cursor:pointer;color:#374151;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;transition:background .1s}
-    .sfhl-rtb:hover{background:#e5e7eb} .sfhl-rtb.active{background:#ddd6fe;color:#4f46e5}
+    .sfhl-rtb:hover{background:#e5e7eb} .sfhl-rtb.active{background:#ddd6fe;color:#0176d3}
     .sfhl-rtb svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
     .sfhl-rte-divider{width:1px;background:#e5e7eb;margin:3px 2px;flex-shrink:0}
     .sfhl-rte-body{min-height:100px;max-height:200px;overflow-y:auto;padding:8px 10px;font-size:12.5px;line-height:1.6;outline:none;word-break:break-word}
-    .sfhl-rte-body:focus{box-shadow:inset 0 0 0 2px rgba(99,102,241,.15)}
+    .sfhl-rte-body:focus{box-shadow:inset 0 0 0 2px rgba(1,118,211,.15)}
     .sfhl-rte-body ul,.sfhl-rte-body ol{padding-left:18px;margin:2px 0}
-    .sfhl-rte-body a{color:#4f46e5;text-decoration:underline}
+    .sfhl-rte-body a{color:#0176d3;text-decoration:underline}
     /* Usage badge */
-    .sfhl-usage-badge{font-size:9.5px;font-weight:600;color:#7c3aed;background:#f5f3ff;padding:0 5px;border-radius:99px;flex-shrink:0;margin-left:auto}
+    .sfhl-usage-badge{font-size:9.5px;font-weight:600;color:#0176d3;background:#eef4ff;padding:0 5px;border-radius:99px;flex-shrink:0;margin-left:auto}
     /* Settings tab */
     .sfhl-settings-body{flex:1;overflow-y:auto;padding:12px 16px;min-height:0}
     .sfhl-settings-body::-webkit-scrollbar{width:4px} .sfhl-settings-body::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:4px}
@@ -1396,7 +1484,7 @@
     .sfhl-help-sec{border:1px solid #e5e7eb;border-radius:8px;overflow:hidden}
     .sfhl-help-hdr{display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer;user-select:none;background:#f9fafb;transition:background .15s}
     .sfhl-help-hdr:hover{background:#f3f4f6}
-    .sfhl-help-sec.sfhl-open>.sfhl-help-hdr{background:#eef2ff}
+    .sfhl-help-sec.sfhl-open>.sfhl-help-hdr{background:#eef4ff}
     .sfhl-help-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
     .sfhl-help-lbl{font-size:12.5px;font-weight:600;color:#374151;flex:1}
     .sfhl-help-chv{width:12px;height:12px;stroke:#9ca3af;fill:none;stroke-width:2;stroke-linecap:round;flex-shrink:0;transition:transform .2s}
@@ -1406,7 +1494,7 @@
     .sfhl-help-inn{padding:10px 14px 12px;font-size:12px;line-height:1.6;color:#374151;border-top:1px solid #f3f4f6}
     .sfhl-help-inn p{margin:0 0 7px}.sfhl-help-inn p:last-child{margin-bottom:0}
     .sfhl-help-inn ul{margin:3px 0 7px 16px;padding:0}.sfhl-help-inn li{margin-bottom:2px}
-    .sfhl-help-inn code{background:#f3f4f6;border-radius:3px;padding:1px 4px;font-size:11px;font-family:monospace;color:#6366f1}
+    .sfhl-help-inn code{background:#f3f4f6;border-radius:3px;padding:1px 4px;font-size:11px;font-family:monospace;color:#0176d3}
     .sfhl-help-tbl{width:100%;border-collapse:collapse;font-size:11.5px;margin:5px 0 6px}
     .sfhl-help-tbl th{text-align:left;padding:4px 7px;font-weight:600;color:#6b7280;background:#f9fafb;border-bottom:1px solid #e5e7eb;font-size:11px}
     .sfhl-help-tbl td{padding:4px 7px;border-bottom:1px solid #f9fafb;vertical-align:top}
@@ -1422,7 +1510,7 @@
     .sfhl-tester-body{display:none;padding:0 14px 10px}
     .sfhl-tester-bar.open .sfhl-tester-body{display:block}
     .sfhl-tester-input{width:100%;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;box-sizing:border-box;outline:none;background:#fff}
-    .sfhl-tester-input:focus{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.1)}
+    .sfhl-tester-input:focus{border-color:#0176d3;box-shadow:0 0 0 2px rgba(1,118,211,.1)}
     .sfhl-tester-result{margin-top:6px;font-size:11.5px;min-height:20px;display:flex;align-items:center}
     /* Snippet-Vorschau Popup */
     .sfhl-snip-prev{position:fixed;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:12px 14px;z-index:2147483648;width:280px;max-height:220px;overflow:hidden;pointer-events:none;opacity:0;transition:opacity .12s}
@@ -1432,36 +1520,36 @@
     .sfhl-snip-prev-body b,.sfhl-snip-prev-body strong{font-weight:600}
     .sfhl-snip-prev-body i,.sfhl-snip-prev-body em{font-style:italic}
     .sfhl-snip-prev-body ul,.sfhl-snip-prev-body ol{padding-left:16px;margin:2px 0}
-    .sfhl-snip-prev-body a{color:#6366f1;text-decoration:underline}
+    .sfhl-snip-prev-body a{color:#0176d3;text-decoration:underline}
     /* Empty states */
     .sfhl-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 16px;gap:7px;color:#9ca3af}
     .sfhl-empty svg{width:38px;height:38px;stroke:#d1d5db;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
     .sfhl-empty-title{font-size:13px;font-weight:600;color:#6b7280;margin:0}
     .sfhl-empty-sub{font-size:11.5px;text-align:center;line-height:1.5;max-width:210px;margin:0}
     /* Hit count badge (Trefferstatistik) */
-    .sfhl-hits{font-size:9px;font-weight:700;color:#4f46e5;background:#eef2ff;border-radius:99px;padding:1px 5px;flex-shrink:0;cursor:default}
+    .sfhl-hits{font-size:9px;font-weight:700;color:#0176d3;background:#eef4ff;border-radius:99px;padding:1px 5px;flex-shrink:0;cursor:default}
     /* Priority badge */
     .sfhl-rule-prio{min-width:20px;height:20px;border-radius:4px;background:#f3f4f6;color:#b0b7c3;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:monospace}
-    .sfhl-row:not(.disabled) .sfhl-rule-prio.has-prio{background:#eef2ff;color:#6366f1}
+    .sfhl-row:not(.disabled) .sfhl-rule-prio.has-prio{background:#eef4ff;color:#0176d3}
     /* Category chips */
     .sfhl-cat-chips{display:flex;flex-wrap:wrap;gap:4px;padding:5px 12px 2px;flex-shrink:0;min-height:0}
     .sfhl-cat-chips:empty{display:none}
     .sfhl-cat-chip{padding:2px 9px;border-radius:99px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid #e5e7eb;background:#f9fafb;color:#6b7280;transition:all .12s;white-space:nowrap;user-select:none;line-height:1.7}
-    .sfhl-cat-chip:hover{border-color:#c4b5fd;color:#7c3aed}
-    .sfhl-cat-chip.active{background:#f5f3ff;border-color:#7c3aed;color:#7c3aed;font-weight:600}
+    .sfhl-cat-chip:hover{border-color:#c4b5fd;color:#0176d3}
+    .sfhl-cat-chip.active{background:#eef4ff;border-color:#0176d3;color:#0176d3;font-weight:600}
     /* RF countdown ring */
     .sfhl-rf-ring-wrap{display:flex;flex-direction:column;align-items:center;padding:14px 0 8px;gap:5px}
     .sfhl-rf-ring{position:relative;width:88px;height:88px;opacity:0;transition:opacity .4s}
     .sfhl-rf-ring.vis{opacity:1}
     .sfhl-rf-ring svg{width:88px;height:88px;transform:rotate(-90deg)}
     .sfhl-rf-ring-bg{fill:none;stroke:#f3f4f6;stroke-width:7}
-    .sfhl-rf-ring-prog{fill:none;stroke:#6366f1;stroke-width:7;stroke-linecap:round;stroke-dasharray:263.9;stroke-dashoffset:0;transition:stroke-dashoffset .9s linear}
+    .sfhl-rf-ring-prog{fill:none;stroke:#0176d3;stroke-width:7;stroke-linecap:round;stroke-dasharray:263.9;stroke-dashoffset:0;transition:stroke-dashoffset .9s linear}
     .sfhl-rf-ring-lbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;color:#374151}
     .sfhl-rf-ring-status{font-size:11px;color:#9ca3af;font-weight:500}
     .sfhl-set-row2{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12.5px;color:#374151}
     .sfhl-set-row2 label{min-width:80px;font-size:12px;color:#6b7280;flex-shrink:0}
     .sfhl-set-row2 input[type="text"],.sfhl-set-row2 select{flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12.5px}
-    .sfhl-set-row2 input:focus,.sfhl-set-row2 select:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.1)}
+    .sfhl-set-row2 input:focus,.sfhl-set-row2 select:focus{outline:none;border-color:#0176d3;box-shadow:0 0 0 2px rgba(1,118,211,.1)}
     .sfhl-set-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
     .sfhl-btn-danger{padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid #fca5a5;background:#fef2f2;color:#dc2626;transition:all .12s}
     .sfhl-btn-danger:hover{background:#fee2e2;border-color:#f87171}
@@ -1476,26 +1564,26 @@
     /* Editor always-on toolbar (plain mode too) */
     .sfhl-editor-wrap{border:1px solid #e5e7eb;border-radius:6px;overflow:hidden}
     .sfhl-editor-content{min-height:110px;max-height:200px;overflow-y:auto;padding:8px 10px;font-size:12.5px;line-height:1.6;outline:none;word-break:break-word;font-family:inherit}
-    .sfhl-editor-content:focus{box-shadow:inset 0 0 0 2px rgba(99,102,241,.15)}
+    .sfhl-editor-content:focus{box-shadow:inset 0 0 0 2px rgba(1,118,211,.15)}
     .sfhl-editor-content ul,.sfhl-editor-content ol{padding-left:18px;margin:2px 0}
-    .sfhl-editor-content a{color:#4f46e5;text-decoration:underline;cursor:pointer}
+    .sfhl-editor-content a{color:#0176d3;text-decoration:underline;cursor:pointer}
 
     /* Snippet Drag&Drop (#9) */
     .sfhl-snip-row{cursor:default}
     .sfhl-snip-row[draggable="true"]{cursor:grab}
-    .sfhl-snip-row.sfhl-sn-dragging{opacity:.3;background:#eef2ff}
-    .sfhl-snip-row.sfhl-sn-over-top{border-top:2px solid #6366f1}
-    .sfhl-snip-row.sfhl-sn-over-bot{border-bottom:2px solid #6366f1}
+    .sfhl-snip-row.sfhl-sn-dragging{opacity:.3;background:#eef4ff}
+    .sfhl-snip-row.sfhl-sn-over-top{border-top:2px solid #0176d3}
+    .sfhl-snip-row.sfhl-sn-over-bot{border-bottom:2px solid #0176d3}
     .sfhl-snip-grip{color:#d1d5db;cursor:grab;flex-shrink:0;padding:0 2px;display:flex;align-items:center}
     .sfhl-snip-grip svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
     .sfhl-snip-row:hover .sfhl-snip-grip{color:#9ca3af}
     /* Kategorie-Umbenennung (#7) */
     .sfhl-cat-hdr span.sfhl-cat-name{cursor:text}
     /* Recently Used (#15) */
-    .sfhl-recent-hdr{display:flex;align-items:center;gap:6px;padding:5px 16px;font-size:10px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px;background:#f5f3ff;border-bottom:1px solid #ede9fe}
+    .sfhl-recent-hdr{display:flex;align-items:center;gap:6px;padding:5px 16px;font-size:10px;font-weight:700;color:#0176d3;text-transform:uppercase;letter-spacing:.5px;background:#eef4ff;border-bottom:1px solid #eef4ff}
     /* Lang-Tabs (#34) */
     .sfhl-lang-tab{padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #e5e7eb;background:#fff;color:#9ca3af;transition:all .12s}
-    .sfhl-lang-tab.active{background:#eef2ff;border-color:#6366f1;color:#4f46e5}
+    .sfhl-lang-tab.active{background:#eef4ff;border-color:#0176d3;color:#0176d3}
     /* Share-Button (#35) */
     .sfhl-ed-share{font-size:11px}
     /* Favoriten-Stern */
@@ -1510,23 +1598,23 @@
     .sfhl-ph-hdr{padding:8px 12px;font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #f3f4f6;background:#f9fafb;position:sticky;top:0}
     .sfhl-ph-item{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;cursor:pointer;transition:background .1s;border-bottom:1px solid #f8f8f8}
     .sfhl-ph-item:hover{background:#f3f4f6}
-    .sfhl-ph-code{font-family:monospace;font-size:11px;font-weight:600;color:#4f46e5;background:#eef2ff;padding:1px 5px;border-radius:3px}
+    .sfhl-ph-code{font-family:monospace;font-size:11px;font-weight:600;color:#0176d3;background:#eef4ff;padding:1px 5px;border-radius:3px}
     .sfhl-ph-val{font-size:11px;color:#6b7280;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     /* Markdown-Import (#44) */
     .sfhl-rtb-md{font-size:10px;font-weight:700;letter-spacing:-.3px}
 
     /* Eingabe-Variable (#45) */
-    .sfhl-var-hint{font-size:10px;color:#7c3aed;margin-top:2px}
+    .sfhl-var-hint{font-size:10px;color:#0176d3;margin-top:2px}
     /* Zeichen-/Wortzähler */
     .sfhl-counter{font-size:10px;color:#9ca3af;margin-top:3px;text-align:right;height:14px}
     .sfhl-counter .warn{color:#f59e0b;font-weight:600}
     /* Spellcheck-Sprachumschalter */
     .sfhl-spell-lang{font-size:10px;color:#9ca3af;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
-    .sfhl-spell-lang:hover{color:#4f46e5}
+    .sfhl-spell-lang:hover{color:#0176d3}
     /* Footer */
     .sfhl-footer{padding:6px 16px;text-align:right;font-size:10px;color:#c4c4c4;border-top:1px solid #f3f4f6;flex-shrink:0;letter-spacing:.2px}
     .sfhl-footer a{color:#c4c4c4;text-decoration:none;transition:color .12s}
-    .sfhl-footer a:hover{color:#6366f1}
+    .sfhl-footer a:hover{color:#0176d3}
   `;
   (document.head || document.documentElement).appendChild(styleEl);
 
@@ -1665,7 +1753,8 @@
           <div class="sfhl-set-row2"><label data-i18n="Trigger-Prefix">Trigger-Prefix</label><select class="sfhl-set-prefix">${PREFIXES.map(p=>`<option value="${p}">${p}</option>`).join('')}</select></div>
           <div class="sfhl-set-row2"><label data-i18n="Dein Name">Dein Name</label><input type="text" class="sfhl-set-uname" placeholder="Max Mustermann"></div>
           <div class="sfhl-set-row2"><label data-i18n="Default language">Default language</label><select class="sfhl-set-lang"><option value="de">Deutsch</option><option value="en">English</option></select></div>
-          <p style="font-size:11px;color:#9ca3af;margin-top:6px">Tip: Type <code>;;en</code> to temporarily show English snippets, <code>;;de</code> for German.</p>
+          <div class="sfhl-set-row2"><label data-i18n="Button-Position">Button</label><select class="sfhl-set-btnpos"><option value="floating" data-i18n="Schwebend">Schwebend (unten rechts)</option><option value="header" data-i18n="SF-Kopfleiste">SF-Kopfleiste</option><option value="hidden" data-i18n="Ausgeblendet">Ausgeblendet (nur Alt+R)</option></select></div>
+          <p style="font-size:11px;color:#9ca3af;margin-top:6px">Tip: Type <code>;;en</code> to temporarily show English snippets, <code>;;de</code> for German. Das Panel öffnet immer auch mit <code>Alt+R</code>.</p>
         </div>
         <div class="sfhl-set-section">
           <h3 data-i18n="E-Mail Bausteine">E-Mail Bausteine</h3>
@@ -1674,6 +1763,18 @@
           <div class="sfhl-set-row2"><label data-i18n="Signatur">Signatur</label><select class="sfhl-wrap-sig"></select></div>
           <p style="font-size:11px;color:#9ca3af;margin-top:6px">Wenn aktiv, wird beim Einf\u00fcgen eines Snippets automatisch die Anrede davor und die Signatur danach eingef\u00fcgt. Gilt nicht wenn das Snippet selbst die Anrede oder Signatur ist.</p>
           <div class="sfhl-set-row2" style="margin-top:10px"><label data-i18n="Vorschau">Vorschau</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-preview-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px" data-i18n="Vor dem Einf\u00fcgen Vorschau zeigen und {eingabe:}-Felder abfragen">Vor dem Einf\u00fcgen Vorschau zeigen und {eingabe:}-Felder abfragen</span></div>
+        </div>
+        <div class="sfhl-set-section">
+          <h3 data-i18n="SLA-Alarm">SLA-Alarm</h3>
+          <div class="sfhl-set-row2"><label data-i18n="Tab-Blinken">Tab-Blinken</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-sla-blink"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Tab-Titel blinkt bei neuem Treffer</span></div>
+          <div class="sfhl-set-row2"><label data-i18n="Ton">Ton</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-sla-sound"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Kurzer Signalton</span></div>
+          <div class="sfhl-set-row2"><label data-i18n="Benachrichtigung">Benachrichtigung</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-sla-notify"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Desktop-Benachrichtigung</span></div>
+          <p style="font-size:11px;color:#9ca3af;margin-top:6px">Greift, wenn der Auto-Refresh einen <b>neuen</b> Treffer einer Regel mit aktiviertem <span style="color:#dc2626">\ud83d\udd14</span>-Alarm findet. Alarm pro Regel \u00fcber das Glocken-Symbol in der Markierungs-Liste schalten.</p>
+        </div>
+        <div class="sfhl-set-section">
+          <h3 data-i18n="Liste">Liste</h3>
+          <div class="sfhl-set-row2"><label data-i18n="Farb-Legende">Farb-Legende</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-legend-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Legende der aktiven Markierungen \u00fcber der Case-Liste</span></div>
+          <div class="sfhl-set-row2"><label data-i18n="Regel aus Auswahl">Regel aus Auswahl</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-selrule-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Listentext markieren \u2192 Schaltfl\u00e4che \u201eRegel aus Auswahl"</span></div>
         </div>
         <div class="sfhl-set-section">
           <h3 data-i18n="Export">Export</h3>
@@ -1708,7 +1809,7 @@
 
           <div class="sfhl-help-sec sfhl-open">
             <div class="sfhl-help-hdr">
-              <div class="sfhl-help-dot" style="background:#6366f1"></div>
+              <div class="sfhl-help-dot" style="background:#0176d3"></div>
               <span class="sfhl-help-lbl">\u00dcberblick</span>
               <svg class="sfhl-help-chv" viewBox="0 0 12 12"><polyline points="2,4 6,8 10,4"/></svg>
             </div>
@@ -1891,6 +1992,12 @@
   const wrapAnrSel  = $('.sfhl-wrap-anrede');
   const wrapSigSel  = $('.sfhl-wrap-sig');
   const previewCb   = $('.sfhl-preview-enabled');
+  const slaBlinkCb  = $('.sfhl-sla-blink');
+  const slaSoundCb  = $('.sfhl-sla-sound');
+  const slaNotifyCb = $('.sfhl-sla-notify');
+  const legendCb    = $('.sfhl-legend-enabled');
+  const selRuleCb   = $('.sfhl-selrule-enabled');
+  const btnPosSel   = $('.sfhl-set-btnpos');
 
   rfInput.value = String(loadRefreshSecs());
   rfCb.checked = loadRefreshOn();
@@ -1899,6 +2006,12 @@
   setLang.value = loadDefaultLang();
   wrapCb.checked = loadWrapOn();
   previewCb.checked = loadPreviewOn();
+  slaBlinkCb.checked = loadSla('blink');
+  slaSoundCb.checked = loadSla('sound');
+  slaNotifyCb.checked = loadSla('notify');
+  legendCb.checked = loadLegendOn();
+  selRuleCb.checked = loadSelRuleOn();
+  btnPosSel.value = loadBtnPos();
 
   // Wrap-Dropdowns befüllen
   function updateWrapDropdowns() {
@@ -2047,7 +2160,7 @@
   addTermEl.addEventListener('input', updateMatchCount);
   $('.sfhl-add-save').onclick = () => {
     const term = (addTermEl.value||'').trim(); if (!term) { addTermEl.focus(); return; }
-    RULES.unshift({ id:uid(), term, color:addSw?.dataset.color||addColorEl.value||'#ffffcc', enabled:true });
+    RULES.unshift({ id:uid(), term, color:addSw?.dataset.color||addColorEl.value||'#ffffcc', enabled:true, alarm:false });
     saveRules(); renderRules(); rescanSoon(true); addTermEl.value = '';
     if (addSw) { addSw.dataset.color='#e6ffe6'; const f=addSw.querySelector('.sfhl-sw-fill'); if(f) f.style.background='#e6ffe6'; } if(addColorEl) addColorEl.value='#e6ffe6';
     addForm.classList.remove('vis'); panel.querySelector('[data-tab="rules"] .sfhl-add-bar').style.display='flex';
@@ -2105,8 +2218,8 @@
     const file = ev.target.files?.[0]; if (!file) return;
     try {
       const raw = JSON.parse(await file.text());
-      if (Array.isArray(raw)) { RULES = raw.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false})); saveRules(); renderRules(); rescanSoon(true); toast(`${RULES.length} Regeln importiert`,'success'); return; }
-      if (raw.rules) { RULES = raw.rules.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false,folder:e.folder||null})); saveRules(); renderRules(); rescanSoon(true); }
+      if (Array.isArray(raw)) { RULES = raw.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false,alarm:e.alarm===true})); saveRules(); renderRules(); rescanSoon(true); toast(`${RULES.length} Regeln importiert`,'success'); return; }
+      if (raw.rules) { RULES = raw.rules.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false,folder:e.folder||null,alarm:e.alarm===true})); saveRules(); renderRules(); rescanSoon(true); }
       if (raw.folders) { FOLDERS = raw.folders.map(f=>({id:f.id||uid(),name:String(f.name||'')})); saveFolders(); }
       if (raw.snippets) {
         const valid = raw.snippets.map(e => { const s = sanitizeSnippetImport(e); return s ? { id: uid(), ...s, favorite: !!e.favorite, usageCount: Number(e.usageCount) || 0 } : null; }).filter(Boolean);
@@ -2165,7 +2278,9 @@
     const col = safeColor(item.color);
     const hits = (hitMap && item.enabled && item.term) ? hitMap.get(item.id) : null;
     const hitBadge = (typeof hits === 'number' && hits > 0) ? `<span class="sfhl-hits" title="${hits} Zeile(n) in der aktuellen Liste treffen (unabh\u00e4ngig von Priorit\u00e4t)">${hits}</span>` : '';
-    row.innerHTML = `<div class="sfhl-grip"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/></svg></div>${prioBadge}<input type="text" value="${escH(item.term)}" title="${escH(item.term)}" class="sfhl-r-term"><div class="sfhl-sw" data-color="${col}"><div class="sfhl-sw-fill" style="background:${col}"></div><input type="color" value="${col}" class="sfhl-r-color"></div><div class="sfhl-row-acts">${hitBadge}<div class="sfhl-ra ${item.enabled?'toggle-on':'toggle-off'} sfhl-toggle-rule" role="button" title="${item.enabled?'Deaktivieren':'Aktivieren'}">${eye}${item.enabled?'An':'Aus'}</div><div class="sfhl-ra del sfhl-del-rule" role="button" title="L\u00f6schen"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div></div>`;
+    const bell = '<svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+    const alarmBtn = `<div class="sfhl-ra ${item.alarm?'alarm-on':'alarm-off'} sfhl-alarm-rule" role="button" title="${item.alarm?'SLA-Alarm an \u2014 meldet neue Treffer dieser Regel':'SLA-Alarm aus \u2014 klicken zum Aktivieren'}">${bell}</div>`;
+    row.innerHTML = `<div class="sfhl-grip"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/></svg></div>${prioBadge}<input type="text" value="${escH(item.term)}" title="${escH(item.term)}" class="sfhl-r-term"><div class="sfhl-sw" data-color="${col}"><div class="sfhl-sw-fill" style="background:${col}"></div><input type="color" value="${col}" class="sfhl-r-color"></div><div class="sfhl-row-acts">${hitBadge}${alarmBtn}<div class="sfhl-ra ${item.enabled?'toggle-on':'toggle-off'} sfhl-toggle-rule" role="button" title="${item.enabled?'Deaktivieren':'Aktivieren'}">${eye}${item.enabled?'An':'Aus'}</div><div class="sfhl-ra del sfhl-del-rule" role="button" title="L\u00f6schen"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div></div>`;
     return row;
   }
 
@@ -2236,6 +2351,7 @@
       FOLDERS = FOLDERS.filter(f => f.id !== fid);
       saveFolders(); saveRules(); renderRules(); rescanSoon(true); toast('Ordner gel\u00f6scht', 'info'); return;
     }
+    const alm = e.target.closest('.sfhl-alarm-rule'); if(alm){const item=RULES.find(x=>x.id===alm.closest('.sfhl-row')?.dataset.ruleId);if(item){item.alarm=!item.alarm;saveRules();renderRules();toast(item.alarm?'SLA-Alarm für diese Regel an':'SLA-Alarm für diese Regel aus','info');}return;}
     const tgl = e.target.closest('.sfhl-toggle-rule'); if(tgl){const item=RULES.find(x=>x.id===tgl.closest('.sfhl-row')?.dataset.ruleId);if(item){item.enabled=!item.enabled;saveRules();renderRules();rescanSoon(true);}return;}
     const del = e.target.closest('.sfhl-del-rule');
     if(del){
@@ -2893,6 +3009,21 @@
   };
   wrapCb.onchange = () => { saveWrapOn(wrapCb.checked); toast(wrapCb.checked ? 'Auto-Wrap an' : 'Auto-Wrap aus', 'info'); };
   previewCb.onchange = () => { savePreviewOn(previewCb.checked); toast(previewCb.checked ? 'Vorschau an' : 'Vorschau aus', 'info'); };
+  slaBlinkCb.onchange = () => { saveSla('blink', slaBlinkCb.checked); toast(slaBlinkCb.checked ? 'Tab-Blinken an' : 'Tab-Blinken aus', 'info'); };
+  slaSoundCb.onchange = () => { saveSla('sound', slaSoundCb.checked); if(slaSoundCb.checked){try{playBeep();}catch{}} toast(slaSoundCb.checked ? 'Alarm-Ton an' : 'Alarm-Ton aus', 'info'); };
+  slaNotifyCb.onchange = () => {
+    if (slaNotifyCb.checked && 'Notification' in window && Notification.permission !== 'granted') {
+      Notification.requestPermission().then(p => {
+        if (p !== 'granted') { slaNotifyCb.checked = false; saveSla('notify', false); toast('Benachrichtigung vom Browser blockiert', 'error'); }
+        else { saveSla('notify', true); toast('Benachrichtigung an', 'info'); }
+      });
+      return;
+    }
+    saveSla('notify', slaNotifyCb.checked); toast(slaNotifyCb.checked ? 'Benachrichtigung an' : 'Benachrichtigung aus', 'info');
+  };
+  legendCb.onchange = () => { saveLegendOn(legendCb.checked); if(legendCb.checked){ if(isCaseListPage())highlightRows(false); } else removeLegend(); toast(legendCb.checked ? 'Farb-Legende an' : 'Farb-Legende aus', 'info'); };
+  selRuleCb.onchange = () => { saveSelRuleOn(selRuleCb.checked); if(!selRuleCb.checked)hideSelButton(); toast(selRuleCb.checked ? 'Regel aus Auswahl an' : 'Regel aus Auswahl aus', 'info'); };
+  btnPosSel.onchange = () => { saveBtnPos(btnPosSel.value); updateVis(); const lbl = btnPosSel.value==='header'?'SF-Kopfleiste':btnPosSel.value==='hidden'?'ausgeblendet (Alt+R)':'schwebend'; toast('Button: '+lbl, 'info'); };
   wrapAnrSel.onchange = () => saveWrapAnrede(wrapAnrSel.value);
   wrapSigSel.onchange = () => saveWrapSignatur(wrapSigSel.value);
 
@@ -3661,9 +3792,115 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   function updateHighlightCount() { const n=document.querySelectorAll('.tm-sfhl-mark').length;const c=triggerBtn.querySelector('.sfhl-count');if(c)c.textContent=n>0?`${n} markiert`:''; }
   // innerText wird bevorzugt: SF Locker Service patcht es für Synthetic-Shadow-Traversal.
   // textContent als Fallback für Umgebungen ohne innerText (z.B. SVG-Knoten).
-  function highlightRows(full=false) { const rows=getRows();if(rows.length===0)return false;for(const row of rows){if(full)unmarkRow(row);const cells=row.querySelectorAll('td');let txt='';for(const c of cells)txt+=' '+(c.innerText||c.textContent||'');const m=bestMatch(txt);if(m)markRow(row,m);else if(full)unmarkRow(row);}updateHighlightCount();return true; }
+  function highlightRows(full=false) { const rows=getRows();if(rows.length===0)return false;for(const row of rows){if(full)unmarkRow(row);const cells=row.querySelectorAll('td');let txt='';for(const c of cells)txt+=' '+(c.innerText||c.textContent||'');const m=bestMatch(txt);if(m)markRow(row,m);else if(full)unmarkRow(row);}updateHighlightCount();ensureLegend(rows);return true; }
+
+  // ===== v4.5.0 #2: Farb-Legende über der Case-Liste =====
+  function removeLegend(){ const l=document.querySelector('.sfhl-legend'); if(l)l.remove(); }
+  function ensureLegend(rows){
+    if(!isCaseListPage()||!loadLegendOn()){ removeLegend(); return; }
+    rows = rows && rows.length ? rows : getRows();
+    const table = rows.length ? rows[0].closest('table') : null;
+    if(!table||!table.parentElement){ removeLegend(); return; }
+    const hits = computeRuleHits();
+    const items = hits ? RULES.filter(r=>r.enabled&&r.term&&hits.get(r.id)>0) : [];
+    let leg = document.querySelector('.sfhl-legend');
+    if(!items.length){ if(leg)leg.remove(); return; }
+    if(!leg){ leg=document.createElement('div'); leg.className='sfhl-legend'; }
+    if(table.previousElementSibling!==leg) table.parentElement.insertBefore(leg, table);
+    leg.innerHTML = '<span class="sfhl-legend-ttl">Legende</span>' + items.map(r=>{
+      const term = r.term.length>30 ? r.term.slice(0,29)+'…' : r.term;
+      const bell = r.alarm ? '<span class="sfhl-legend-bell" title="SLA-Alarm aktiv">🔔</span>' : '';
+      return `<span class="sfhl-legend-chip" title="${escH(r.term)}"><span class="sfhl-legend-sw" style="background:${safeColor(r.color)}"></span>${escH(term)}${bell}<b>${hits.get(r.id)}</b></span>`;
+    }).join('');
+  }
+
+  // ===== v4.5.0 #3: Regel aus markiertem Listentext anlegen =====
+  let _selBtn=null;
+  function hideSelButton(){ if(_selBtn){_selBtn.remove();_selBtn=null;} }
+  function showSelButton(x,y,text){
+    hideSelButton();
+    _selBtn=document.createElement('div');
+    _selBtn.className='sfhl-sel-btn';
+    _selBtn.textContent='➕ Regel aus Auswahl';
+    _selBtn.title='„'+text+'" als Markierungs-Regel anlegen';
+    _selBtn.style.left=Math.round(x)+'px';
+    _selBtn.style.top=Math.round(y)+'px';
+    // mousedown statt click: verhindert, dass die Textauswahl vorher kollabiert
+    _selBtn.addEventListener('mousedown', ev=>{ ev.preventDefault(); ev.stopPropagation(); createRuleFromSelection(text); hideSelButton(); });
+    document.body.appendChild(_selBtn);
+  }
+  function createRuleFromSelection(term){
+    if(RULES.some(r=>r.term===term)){ toast('Regel existiert bereits','info'); return; }
+    RULES.unshift({ id:uid(), term, color:'#fff3a3', enabled:true, alarm:false });
+    saveRules(); renderRules(); rescanSoon(true);
+    const short = term.length>30 ? term.slice(0,29)+'…' : term;
+    toast('Regel angelegt: „'+short+'"','success');
+  }
+  document.addEventListener('mouseup', e=>{
+    if(!loadSelRuleOn()||!isCaseListPage())return;
+    if(e.target.closest && e.target.closest('.sfhl-panel,.sfhl-sel-btn,.sfhl-trigger'))return;
+    setTimeout(()=>{ // Selektion ist erst nach dem mouseup final
+      const sel=window.getSelection();
+      const t=(sel?sel.toString():'').trim().replace(/\s+/g,' ');
+      if(t.length<2||t.length>80){ hideSelButton(); return; }
+      showSelButton(e.pageX+6, e.pageY+10, t);
+    },10);
+  });
+  document.addEventListener('mousedown', e=>{ if(_selBtn && !(e.target.closest && e.target.closest('.sfhl-sel-btn'))) hideSelButton(); }, true);
   function snapshotMarked() { const set=new Set();document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||c.textContent||'');set.add(t);});return set; }
-  function highlightAndBlink(snap) { highlightRows(true);if(!snap)return;document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||c.textContent||'');if(!snap.has(t)){r.classList.add('sfhl-new-match');setTimeout(()=>r.classList.remove('sfhl-new-match'),3000);}}); }
+  function highlightAndBlink(snap) {
+    highlightRows(true);
+    if(!snap)return;
+    let alarmHits=0;
+    document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{
+      const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||c.textContent||'');
+      if(!snap.has(t)){
+        r.classList.add('sfhl-new-match');setTimeout(()=>r.classList.remove('sfhl-new-match'),3000);
+        // v4.5.0 SLA-Alarm: neue Treffer-Zeile, deren Regel das alarm-Flag trägt
+        const rid=r.dataset.sfhlRule; const rule=rid&&RULES.find(x=>x.id===rid);
+        if(rule&&rule.alarm)alarmHits++;
+      }
+    });
+    if(alarmHits>0)fireSlaAlarm(alarmHits);
+  }
+
+  // ===== v4.5.0: SLA-Alarm — meldet neue Treffer von Alarm-Regeln nach Auto-Refresh =====
+  let _slaBlinkId=null, _slaOrigTitle=null;
+  function fireSlaAlarm(n){
+    try{ if(loadSla('blink'))startTitleBlink(n); }catch{}
+    try{ if(loadSla('sound'))playBeep(); }catch{}
+    try{ if(loadSla('notify'))showSlaNotification(n); }catch{}
+  }
+  function startTitleBlink(n){
+    if(document.hasFocus())return; // Tab ist im Blick → kein Blinken nötig
+    if(_slaOrigTitle===null)_slaOrigTitle=document.title;
+    clearInterval(_slaBlinkId);
+    const alt=`🔴 (${n}) neue${n>1?'':'r'} Treffer`;
+    let on=false;
+    _slaBlinkId=setInterval(()=>{document.title=(on=!on)?alt:(_slaOrigTitle||document.title);},1000);
+  }
+  function stopTitleBlink(){
+    if(_slaBlinkId){clearInterval(_slaBlinkId);_slaBlinkId=null;}
+    if(_slaOrigTitle!==null){document.title=_slaOrigTitle;_slaOrigTitle=null;}
+  }
+  window.addEventListener('focus',stopTitleBlink);
+  function playBeep(){
+    const Ctx=window.AudioContext||window.webkitAudioContext; if(!Ctx)return;
+    const ctx=new Ctx(); if(ctx.resume)ctx.resume();
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.type='sine';o.frequency.value=880;o.connect(g);g.connect(ctx.destination);
+    const t=ctx.currentTime;
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(0.18,t+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.35);
+    o.start(t);o.stop(t+0.36);
+    o.onended=()=>{try{ctx.close();}catch{}};
+  }
+  function showSlaNotification(n){
+    if(!('Notification'in window)||Notification.permission!=='granted')return;
+    const nt=new Notification('Neue Case-Treffer',{body:`${n} neue${n>1?'':'r'} Treffer einer Alarm-Regel in der Liste.`,tag:'sfhl-sla'});
+    nt.onclick=()=>{try{window.focus();}catch{}nt.close();};
+  }
 
   // ===== Visibility =====
   function isCaseListPage() {
@@ -3673,8 +3910,47 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   // FIX (B3): Auto-Refresh nur auf echten Case-Listen — auf WorkOrder-Seiten gibt es keinen
   // Refresh-Button, waitBtn() würde dort endlos pollen.
   function isCaseListView() { return location.href.includes('/lightning/o/Case/list'); }
-  function updateVis() { triggerBtn.style.display = 'inline-flex'; }
+
+  // ===== v4.5.0 #4: Nativer Einstieg — SLDS-Icon in der Lightning-Kopfleiste =====
+  // Strategie-Liste + Re-Injection (wie beim Refresh-Button), Floating-Button als Fallback.
+  const HEADER_STRATEGIES = [
+    'header.slds-global-header ul.slds-global-actions',
+    'ul.slds-global-actions',
+    '.slds-global-header__item_actions ul',
+    'one-appnav ul.slds-global-actions',
+  ];
+  function getHeaderActions() {
+    for (const s of HEADER_STRATEGIES) { try { const el = document.querySelector(s); if (el) return el; } catch {} }
+    return null;
+  }
+  let _headerBtn = null;
+  function buildHeaderBtn() {
+    const li = document.createElement('li');
+    li.className = 'slds-global-actions__item sfhl-hdr-item';
+    li.innerHTML = '<button type="button" class="slds-button slds-button_icon slds-button_icon-container slds-global-actions__item-action sfhl-hdr-btn" title="SF Tools (Alt+R)" aria-label="SF Tools öffnen"><span class="sfhl-hdr-mark"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 16l8.5-8.5a2.1 2.1 0 0 1 3 3L9 19l-4 1 1-4z"/></svg></span><span class="sfhl-hdr-dot"></span></button>';
+    li.querySelector('button').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); panel.classList.contains('open') ? closePanel() : openPanel(); });
+    return li;
+  }
+  function ensureHeaderBtn() {
+    if (loadBtnPos() !== 'header') { if (_headerBtn) { _headerBtn.remove(); _headerBtn = null; } return false; }
+    const host = getHeaderActions();
+    if (!host) { if (_headerBtn) { _headerBtn.remove(); _headerBtn = null; } return false; }
+    if (_headerBtn && _headerBtn.isConnected && host.contains(_headerBtn)) return true;
+    if (_headerBtn) _headerBtn.remove();
+    _headerBtn = buildHeaderBtn();
+    host.insertBefore(_headerBtn, host.firstChild);
+    return true;
+  }
+  function updateVis() {
+    const pos = loadBtnPos();
+    const headerOk = ensureHeaderBtn();
+    // Floating zeigen, wenn so gewählt — oder als Fallback, wenn Header gewollt, aber nicht gefunden.
+    const showFloat = pos === 'floating' || (pos === 'header' && !headerOk);
+    triggerBtn.style.display = showFloat ? 'inline-flex' : 'none';
+  }
   updateVis();
+  // Re-Injection: SF rendert den Header bei Navigation neu — Icon regelmäßig wiederherstellen.
+  setInterval(updateVis, 2500);
   // FIX #5: Cache-Invalidierung in pushState + popstate integriert (statt 1s-Polling)
   const origPush = history.pushState;
   history.pushState = function() { const r=origPush.apply(this,arguments);_contactApiCache=null;_contactApiCacheId=null;setTimeout(()=>{updateVis();if(isCaseListPage())highlightRows(true);},100);setTimeout(restartRefresh,500);setTimeout(prefetchContactApi,1500);return r; };
