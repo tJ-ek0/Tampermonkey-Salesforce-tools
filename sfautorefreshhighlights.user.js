@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.6.3
+// @version      4.8.0
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,11 +19,27 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.6.3';
+  const VERSION = '4.8.0';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
   const CHANGELOG = {
+    '4.8.0': {
+      de: [
+        'Snippet-Dropdown: Die ersten neun Einträge sind nummeriert — mit Alt+1 bis Alt+9 fügst du einen Eintrag direkt ein, ohne erst mit den Pfeiltasten zu navigieren.',
+      ],
+      en: [
+        'Snippet dropdown: the first nine entries are numbered — press Alt+1 to Alt+9 to insert an entry directly, without navigating with the arrow keys.',
+      ],
+    },
+    '4.7.0': {
+      de: [
+        'Geräte-Doku: Link-Vorlagen lassen sich jetzt direkt in den Einstellungen bearbeiten (Einstellungen → Geräte-Doku → „✎ Vorlagen bearbeiten") — Kürzel, Beschriftung, Typ und URL anlegen/ändern/löschen, ohne Datei-Import.',
+      ],
+      en: [
+        'Device docs: link templates can now be edited directly in the settings (Settings → Device docs → “✎ Edit templates”) — create/change/delete key, label, type and URL without importing a file.',
+      ],
+    },
     '4.6.3': {
       de: [
         'Doku-Lookup funktioniert jetzt auch für Codes, die im E-Mail-Editor markiert werden (der läuft in einem iframe und wurde vorher von der Auswahl-Erkennung nicht erfasst).',
@@ -1465,6 +1481,24 @@
     .sfhl-doku-lnk:hover{background:#0176d3;color:#fff;border-color:#0176d3}
     .sfhl-doku-more{margin-top:8px;font-size:11px;font-weight:600;color:#0176d3;cursor:pointer;user-select:none}
     .sfhl-doku-more:hover{text-decoration:underline}
+    /* v4.7.0 Vorlagen-Editor (Stufe 1.5) */
+    .sfhl-doku-ed-wrap{margin-top:8px}
+    .sfhl-doku-ed{max-height:280px;overflow-y:auto;overflow-x:hidden;padding:2px}
+    .sfhl-doku-ed::-webkit-scrollbar{width:4px} .sfhl-doku-ed::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:4px}
+    .sfhl-de-card{border:1px solid #e5e7eb;border-radius:6px;padding:6px;margin-bottom:6px;background:#fafafa}
+    .sfhl-de-line{display:flex;gap:5px;align-items:center;margin-bottom:4px}
+    .sfhl-de-line:last-child{margin-bottom:0}
+    .sfhl-de-card input,.sfhl-de-card select{padding:4px 7px;border:1px solid #e5e7eb;border-radius:5px;font-size:11.5px;min-width:0;background:#fff;color:#374151}
+    .sfhl-de-card input:focus,.sfhl-de-card select:focus{outline:none;border-color:#0176d3;box-shadow:0 0 0 2px rgba(1,118,211,.1)}
+    .sfhl-de-key{width:80px;flex-shrink:0;font-weight:600}
+    .sfhl-de-type{flex:1}
+    .sfhl-de-label{flex:1}
+    .sfhl-de-url{flex:1;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px}
+    .sfhl-de-url.sfhl-de-bad{border-color:#e5a000;background:#fffbeb}
+    .sfhl-de-del{flex-shrink:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#9ca3af;cursor:pointer;font-size:13px;line-height:1}
+    .sfhl-de-del:hover{background:#fde8e8;color:#dc2626}
+    .sfhl-de-hint{font-size:10.5px;color:#9ca3af;margin:2px 2px 0}
+    .sfhl-de-hint b{color:#e5a000}
     /* #4 Header-Icon in der SLDS-Kopfleiste */
     .sfhl-hdr-item .sfhl-hdr-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;min-width:2rem;background:transparent;border:none;cursor:pointer;color:inherit;padding:0}
     .sfhl-hdr-mark{display:inline-flex;width:20px;height:20px}
@@ -1538,6 +1572,8 @@
     .sfhl-dd-item{display:flex;flex-direction:column;padding:8px 10px;border-radius:6px;cursor:pointer;transition:background .1s}
     .sfhl-dd-item:hover,.sfhl-dd-item.selected{background:#f3f4f6}
     .sfhl-dd-item-top{display:flex;align-items:center;gap:6px}
+    .sfhl-dd-num{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;font-size:9.5px;font-weight:700;color:#9ca3af;background:#f3f4f6;border-radius:3px;flex-shrink:0}
+    .sfhl-dd-item.selected .sfhl-dd-num{color:#0176d3;background:#eef4ff}
     .sfhl-dd-trigger{font-family:monospace;font-size:11px;font-weight:600;color:#0176d3;background:#eef4ff;padding:1px 5px;border-radius:3px}
     .sfhl-dd-label{font-size:12px;font-weight:500;color:#1a1a1a}
     .sfhl-dd-cat{font-size:10px;color:#9ca3af;margin-left:auto}
@@ -1892,9 +1928,17 @@
           <div class="sfhl-set-row2"><label data-i18n="Doku-Lookup">Doku-Lookup</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-doku-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Ger\u00e4tecode markieren \u2192 \u201e\ud83d\udcc4 Doku-Links"</span></div>
           <p style="font-size:11px;color:#9ca3af;margin:2px 0 6px"><span class="sfhl-doku-count">0</span> Link-Vorlagen geladen. Vorlagen werden per Config-Datei importiert (keine im Skript hinterlegt).</p>
           <div class="sfhl-set-actions">
-            <div class="sfhl-btn-sm sfhl-act-doku-import" role="button">\u2191 Doku-Links importieren</div>
-            <div class="sfhl-btn-sm sfhl-act-doku-export" role="button">\u2193 Doku-Links exportieren</div>
+            <div class="sfhl-btn-sm sfhl-act-doku-edit" role="button">\u270e Vorlagen bearbeiten</div>
+            <div class="sfhl-btn-sm sfhl-act-doku-import" role="button">\u2191 Importieren</div>
+            <div class="sfhl-btn-sm sfhl-act-doku-export" role="button">\u2193 Exportieren</div>
             <div class="sfhl-btn-danger sfhl-act-doku-clear" role="button">Leeren</div>
+          </div>
+          <div class="sfhl-doku-ed-wrap" style="display:none">
+            <div class="sfhl-doku-ed"></div>
+            <div class="sfhl-set-actions" style="margin-top:6px">
+              <div class="sfhl-btn-sm sfhl-btn-primary sfhl-act-doku-add" role="button">+ Vorlage</div>
+            </div>
+            <p class="sfhl-de-hint">K\u00fcrzel = Link-Beschriftung (z.\u202fB. BA, TI). URL muss <b>%s</b> enthalten \u2014 wird durch den markierten Code ersetzt. Typ steuert, bei welcher Code-Art die Vorlage erscheint.</p>
           </div>
         </div>
         <div class="sfhl-set-section">
@@ -2034,6 +2078,7 @@
                 <tr><td><code>Esc</code></td><td>Panel oder Dropdown schlie\u00dfen</td></tr>
                 <tr><td><code>;;</code></td><td>Snippet-Dropdown \u00f6ffnen (in Textfeldern)</td></tr>
                 <tr><td><code>\u2191 \u2193</code></td><td>Im Dropdown navigieren</td></tr>
+                <tr><td><code>Alt+1</code>\u2026<code>9</code></td><td>Eintrag 1\u20139 direkt einf\u00fcgen</td></tr>
                 <tr><td><code>Enter</code> / <code>Tab</code></td><td>Snippet einf\u00fcgen</td></tr>
               </table>
             </div></div>
@@ -2137,6 +2182,27 @@
   btnPosSel.value = loadBtnPos();
   dokuCb.checked = loadDokuOn();
   function updateDokuCount() { if (dokuCountEl) dokuCountEl.textContent = String(loadDokuLinks().length); }
+  // v4.7.0 Vorlagen-Editor (Stufe 1.5): In-UI bearbeiten statt nur Import.
+  const DOKU_TYPES = [['root','Produkt-Root'],['serial','Seriennummer'],['auftrag','Auftragsnummer'],['order','Ordercode'],['free','Suche']];
+  let dokuEditArr = null;
+  function renderDokuEditor() {
+    const box = $('.sfhl-doku-ed'); if (!box) return;
+    if (!dokuEditArr) dokuEditArr = loadDokuLinks();
+    if (!dokuEditArr.length) { box.innerHTML = '<p class="sfhl-de-hint" style="margin:6px 2px">Noch keine Vorlagen — „+ Vorlage" anlegen oder oben eine Config importieren.</p>'; return; }
+    box.innerHTML = dokuEditArr.map(e => {
+      const opts = DOKU_TYPES.map(([v,l]) => `<option value="${v}"${e.type===v?' selected':''}>${escH(l)}</option>`).join('');
+      const bad = !/%s/.test(e.url || '');
+      return `<div class="sfhl-de-card" data-id="${escH(e.id)}">
+        <div class="sfhl-de-line">
+          <input class="sfhl-de-key" type="text" value="${escH(e.key)}" placeholder="Kürzel" maxlength="24">
+          <select class="sfhl-de-type">${opts}</select>
+          <div class="sfhl-de-del" role="button" title="Vorlage löschen">✕</div>
+        </div>
+        <div class="sfhl-de-line"><input class="sfhl-de-label" type="text" value="${escH(e.label)}" placeholder="Beschriftung (optional)" maxlength="100"></div>
+        <div class="sfhl-de-line"><input class="sfhl-de-url${bad?' sfhl-de-bad':''}" type="text" value="${escH(e.url)}" placeholder="https://…%s…" maxlength="500"></div>
+      </div>`;
+    }).join('');
+  }
   updateDokuCount();
 
   // Wrap-Dropdowns befüllen
@@ -2249,7 +2315,7 @@
         if(!Array.isArray(arr)){ toast('Kein gültiges Doku-Link-Format','error',3500); return; }
         const TYPES=['root','serial','auftrag','order','free'];
         const clean=arr.map(e=>({ id:uid(), key:String(e.key||'').slice(0,24), label:String(e.label||'').slice(0,100), type:TYPES.includes(e.type)?e.type:'root', url:String(e.url||'').slice(0,500) })).filter(e=>e.url && /%s/.test(e.url));
-        saveDokuLinks(clean); updateDokuCount();
+        saveDokuLinks(clean); dokuEditArr = null; updateDokuCount(); renderDokuEditor();
         toast(`${clean.length} Doku-Links importiert`,'success');
       } catch { toast('Ungültiges Format','error',3500); }
     };
@@ -2257,8 +2323,43 @@
   };
   $('.sfhl-act-doku-clear').onclick = () => {
     if(!confirm(t('Alle Doku-Link-Vorlagen löschen?'))) return;
-    saveDokuLinks([]); updateDokuCount(); toast('Doku-Links geleert','info');
+    saveDokuLinks([]); dokuEditArr = null; updateDokuCount(); renderDokuEditor(); toast('Doku-Links geleert','info');
   };
+  // v4.7.0 Vorlagen-Editor: Aufklappen, Hinzufügen, Inline-Bearbeiten, Löschen
+  const dokuEdWrap = $('.sfhl-doku-ed-wrap');
+  $('.sfhl-act-doku-edit').onclick = () => {
+    const open = dokuEdWrap.style.display !== 'none';
+    if (open) { dokuEdWrap.style.display = 'none'; return; }
+    renderDokuEditor(); dokuEdWrap.style.display = '';
+  };
+  $('.sfhl-act-doku-add').onclick = () => {
+    if (!dokuEditArr) dokuEditArr = loadDokuLinks();
+    dokuEditArr.push({ id:uid(), key:'', label:'', type:'root', url:'' });
+    saveDokuLinks(dokuEditArr); updateDokuCount(); renderDokuEditor();
+    const box = $('.sfhl-doku-ed'); const last = box && box.querySelector('.sfhl-de-card:last-child .sfhl-de-key'); if (last) last.focus();
+  };
+  function dokuEdEntry(target) {
+    const card = target.closest('.sfhl-de-card'); if (!card || !dokuEditArr) return null;
+    return dokuEditArr.find(x => x.id === card.dataset.id) || null;
+  }
+  $('.sfhl-doku-ed').addEventListener('input', e => {
+    const it = dokuEdEntry(e.target); if (!it) return;
+    if (e.target.matches('.sfhl-de-key')) it.key = e.target.value;
+    else if (e.target.matches('.sfhl-de-label')) it.label = e.target.value;
+    else if (e.target.matches('.sfhl-de-url')) { it.url = e.target.value; e.target.classList.toggle('sfhl-de-bad', !/%s/.test(it.url)); }
+    else return;
+    saveDokuLinks(dokuEditArr); updateDokuCount();
+  });
+  $('.sfhl-doku-ed').addEventListener('change', e => {
+    const it = dokuEdEntry(e.target); if (!it || !e.target.matches('.sfhl-de-type')) return;
+    it.type = e.target.value; saveDokuLinks(dokuEditArr);
+  });
+  $('.sfhl-doku-ed').addEventListener('click', e => {
+    if (!e.target.closest('.sfhl-de-del')) return;
+    const card = e.target.closest('.sfhl-de-card'); if (!card || !dokuEditArr) return;
+    dokuEditArr = dokuEditArr.filter(x => x.id !== card.dataset.id);
+    saveDokuLinks(dokuEditArr); updateDokuCount(); renderDokuEditor();
+  });
   $('.sfhl-act-reset').onclick  = () => doReset();
   $('.sfhl-act-reset-rules').onclick = () => {
     if (!confirm(t('Markierungsregeln auf Standard zur\u00fccksetzen?'))) return;
@@ -3537,8 +3638,9 @@
       const favBadge = s.favorite ? '<span style="color:#f59e0b;margin-left:2px">\u2605</span>' : '';
       const safeLang = escH((['de','en'].includes(activeLang) ? activeLang : 'de').toUpperCase());
       const langBadge = s.bodyEn ? `<span style="font-size:9px;background:${activeLang==='en'?'#dbeafe':'#f3f4f6'};color:${activeLang==='en'?'#1d4ed8':'#6b7280'};padding:0 4px;border-radius:3px;margin-left:4px">${safeLang}</span>` : '';
-      return `<div class="sfhl-dd-item${i===0?' selected':''}" data-snip-id="${s.id}"><div class="sfhl-dd-item-top"><span class="sfhl-dd-trigger">${escH(prefix+s.trigger)}</span><span class="sfhl-dd-label">${escH(s.label)}${favBadge}${langBadge}</span><span class="sfhl-dd-cat">${escH(s.category)}</span></div><div class="sfhl-dd-preview">${escH(preview)}${preview.length>=70?'\u2026':''}</div></div>`;
-    }).join('') + `<div class="sfhl-dd-hint"><span>${loadWrapOn()?'<span style="color:#10b981;font-weight:600">\u2713 Anrede+Signatur</span> \u2022 ':''}Enter = einf\u00fcgen \u2022 \u2191\u2193 = navigieren \u2022 Esc = schlie\u00dfen</span></div>`;
+      const numBadge = i < 9 ? `<span class="sfhl-dd-num" title="Alt+${i+1}">${i+1}</span>` : '';
+      return `<div class="sfhl-dd-item${i===0?' selected':''}" data-snip-id="${s.id}"><div class="sfhl-dd-item-top">${numBadge}<span class="sfhl-dd-trigger">${escH(prefix+s.trigger)}</span><span class="sfhl-dd-label">${escH(s.label)}${favBadge}${langBadge}</span><span class="sfhl-dd-cat">${escH(s.category)}</span></div><div class="sfhl-dd-preview">${escH(preview)}${preview.length>=70?'\u2026':''}</div></div>`;
+    }).join('') + `<div class="sfhl-dd-hint"><span>${loadWrapOn()?'<span style="color:#10b981;font-weight:600">\u2713 Anrede+Signatur</span> \u2022 ':''}Enter = einf\u00fcgen \u2022 \u2191\u2193 = navigieren \u2022 Alt+1\u20139 = direkt \u2022 Esc = schlie\u00dfen</span></div>`;
 
     const pos = getCaretCoords(el);
     let top = pos.top, left = pos.left;
@@ -3641,6 +3743,19 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   // Keyboard-Handler — muss auch in iframe-Dokumenten registriert werden
   function onKeydownEvent(e) {
     if (!dropdown.classList.contains('vis') || !dropdown._matches) return;
+    // Alt+1…9: n-tes Snippet direkt einfügen. e.code statt e.key, damit es
+    // layout-unabhängig ist (Alt erzeugt je nach Tastatur Sonderzeichen als e.key).
+    if (e.altKey && !e.ctrlKey && !e.metaKey) {
+      const dm = /^(?:Digit|Numpad)([1-9])$/.exec(e.code || '');
+      if (dm) {
+        const idx = +dm[1] - 1;
+        if (idx < dropdown._matches.length) {
+          e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+          insertSnippet(dropdown._el, dropdown._triggerInfo, dropdown._matches[idx]);
+        }
+        return;
+      }
+    }
     const items = dropdown.querySelectorAll('.sfhl-dd-item');
     if (e.key === 'ArrowDown') { e.preventDefault(); ddSelectedIdx = Math.min(ddSelectedIdx + 1, items.length - 1); items.forEach((it,i) => it.classList.toggle('selected', i === ddSelectedIdx)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); ddSelectedIdx = Math.max(ddSelectedIdx - 1, 0); items.forEach((it,i) => it.classList.toggle('selected', i === ddSelectedIdx)); }
