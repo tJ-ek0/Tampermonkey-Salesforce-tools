@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.8.0
+// @version      4.11.0
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,11 +19,35 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.8.0';
+  const VERSION = '4.11.0';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
   const CHANGELOG = {
+    '4.11.0': {
+      de: [
+        'Geräte-Doku (experimentell): Optionale Auto-Markierung. Wenn aktiviert (Einstellungen → Geräte-Doku → Auto-Markierung), werden erkannte Gerätecodes auf der Seite dezent unterstrichen; mit gedrückter Shift-Taste über einen Code fahren öffnet die Doku-Links — ganz ohne vorher zu markieren.',
+      ],
+      en: [
+        'Device docs (experimental): optional auto-highlight. When enabled (Settings → Device docs → Auto-highlight), detected device codes are subtly underlined on the page; hovering a code while holding Shift opens the doc links — no need to select first.',
+      ],
+    },
+    '4.10.0': {
+      de: [
+        'Automatische Sicherungen: Vor jedem Import oder Zurücksetzen wird dein vorheriger Stand (Regeln + Snippets) automatisch gesichert — die letzten 3. Unter Einstellungen → Sicherung kannst du sie mit einem Klick wiederherstellen (der aktuelle Stand wird dabei ebenfalls gesichert).',
+      ],
+      en: [
+        'Automatic backups: before every import or reset your previous state (rules + snippets) is saved automatically — the last 3. Under Settings → Backup you can restore them with one click (your current state is saved too).',
+      ],
+    },
+    '4.9.0': {
+      de: [
+        'Snippet-Dropdown: Tippfehlertoleranz. Wenn deine Eingabe sonst nichts findet, zeigt das Dropdown jetzt ähnliche Treffer (z. B. „dku" → „doku") statt leer zu bleiben — markiert mit „≈ ähnliche Treffer".',
+      ],
+      en: [
+        'Snippet dropdown: typo tolerance. When your input would otherwise find nothing, the dropdown now shows similar matches (e.g. “dku” → “doku”) instead of staying empty — flagged with “≈ similar matches”.',
+      ],
+    },
     '4.8.0': {
       de: [
         'Snippet-Dropdown: Die ersten neun Einträge sind nummeriert — mit Alt+1 bis Alt+9 fügst du einen Eintrag direkt ein, ohne erst mit den Pfeiltasten zu navigieren.',
@@ -155,6 +179,7 @@
   const LS_DEF_LANG  = 'sfhl_default_language'; // 'de' oder 'en'
   const LS_LAST_EXPORT = 'sfhl_last_export';    // Timestamp des letzten Exports (Backup-Reminder)
   const LS_BACKUP_HINT = 'sfhl_backup_hint_at'; // Timestamp des letzten Backup-Hinweises
+  const LS_BACKUPS = 'sfhl_backups_v1';         // rotierende Auto-Backups (max 3) vor Import/Reset
   const LS_PREVIEW_ON  = 'sfhl_preview_enabled'; // Feature 2 (v4.4.0): Vorschau vor dem Einfügen an/aus
   const LS_LAST_VER    = 'sfhl_last_seen_version'; // Feature 3 (v4.4.0): zuletzt gesehene Version für „Was ist neu"
 
@@ -356,6 +381,11 @@
   // type ∈ root|serial|auftrag|order|free. url nutzt %s als Platzhalter (alle Vorkommen).
   function loadDokuOn() { return localStorage.getItem('sfhl_doku_enabled') !== '0'; }
   function saveDokuOn(on) { localStorage.setItem('sfhl_doku_enabled', on ? '1' : '0'); }
+  // v4.11.0 Stufe 2: Auto-Markierung (default aus, experimentell). Früh definiert wegen TDZ
+  // (Settings-Wiring liest DOKU_HL_SUPPORTED beim Init, lange vor dem Stufe-2-Block).
+  const DOKU_HL_SUPPORTED = !!(window.CSS && window.CSS.highlights && window.Highlight && document.caretRangeFromPoint);
+  function loadDokuHlOn() { return localStorage.getItem('sfhl_doku_hl_enabled') === '1'; }
+  function saveDokuHlOn(on) { localStorage.setItem('sfhl_doku_hl_enabled', on ? '1' : '0'); }
   function loadDokuLinks() {
     try { const raw = localStorage.getItem('sfhl_doku_links'); if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.map(e => ({ id:e.id||uid(), key:String(e.key||''), label:String(e.label||''), type:String(e.type||'root'), url:String(e.url||'') })).filter(e => e.url && /%s/.test(e.url)); } } catch {}
     return [];
@@ -1481,6 +1511,8 @@
     .sfhl-doku-lnk:hover{background:#0176d3;color:#fff;border-color:#0176d3}
     .sfhl-doku-more{margin-top:8px;font-size:11px;font-weight:600;color:#0176d3;cursor:pointer;user-select:none}
     .sfhl-doku-more:hover{text-decoration:underline}
+    /* v4.11.0 Stufe 2: Auto-Markierung erkannter Gerätecodes (CSS Custom Highlight API) */
+    ::highlight(sfhl-doku){background-color:rgba(1,118,211,.16);text-decoration:underline dotted #0176d3}
     /* v4.7.0 Vorlagen-Editor (Stufe 1.5) */
     .sfhl-doku-ed-wrap{margin-top:8px}
     .sfhl-doku-ed{max-height:280px;overflow-y:auto;overflow-x:hidden;padding:2px}
@@ -1499,6 +1531,14 @@
     .sfhl-de-del:hover{background:#fde8e8;color:#dc2626}
     .sfhl-de-hint{font-size:10.5px;color:#9ca3af;margin:2px 2px 0}
     .sfhl-de-hint b{color:#e5a000}
+    /* v4.10.0 Rotierende Auto-Backups */
+    .sfhl-backup-list{display:flex;flex-direction:column;gap:6px}
+    .sfhl-bk-row{display:flex;align-items:center;gap:8px;border:1px solid #e5e7eb;border-radius:6px;padding:6px 8px;background:#fafafa}
+    .sfhl-bk-meta{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+    .sfhl-bk-when{font-size:12px;font-weight:600;color:#374151}
+    .sfhl-bk-reason{font-size:10.5px;color:#6b7280}
+    .sfhl-bk-counts{font-size:10px;color:#9ca3af}
+    .sfhl-bk-row .sfhl-btn-sm{flex-shrink:0}
     /* #4 Header-Icon in der SLDS-Kopfleiste */
     .sfhl-hdr-item .sfhl-hdr-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;min-width:2rem;background:transparent;border:none;cursor:pointer;color:inherit;padding:0}
     .sfhl-hdr-mark{display:inline-flex;width:20px;height:20px}
@@ -1926,6 +1966,7 @@
         <div class="sfhl-set-section">
           <h3 data-i18n="Ger\u00e4te-Doku">Ger\u00e4te-Doku</h3>
           <div class="sfhl-set-row2"><label data-i18n="Doku-Lookup">Doku-Lookup</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-doku-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Ger\u00e4tecode markieren \u2192 \u201e\ud83d\udcc4 Doku-Links"</span></div>
+          <div class="sfhl-set-row2"><label data-i18n="Auto-Markierung">Auto-Markierung</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-doku-hl-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Codes auf der Seite markieren \u00b7 <b>Shift</b>+Mauszeiger zeigt Links (experimentell)</span></div>
           <p style="font-size:11px;color:#9ca3af;margin:2px 0 6px"><span class="sfhl-doku-count">0</span> Link-Vorlagen geladen. Vorlagen werden per Config-Datei importiert (keine im Skript hinterlegt).</p>
           <div class="sfhl-set-actions">
             <div class="sfhl-btn-sm sfhl-act-doku-edit" role="button">\u270e Vorlagen bearbeiten</div>
@@ -1955,6 +1996,11 @@
             <div class="sfhl-btn-sm sfhl-act-import" role="button" data-i18n="\u2191 Datei importieren">\u2191 Datei importieren</div>
           </div>
           <p style="font-size:11px;color:#9ca3af;margin-top:6px">Importierte Regeln/Snippets ersetzen die bestehenden.</p>
+        </div>
+        <div class="sfhl-set-section">
+          <h3 data-i18n="Sicherung">Sicherung</h3>
+          <p style="font-size:11px;color:#9ca3af;margin:0 0 8px">Vor jedem Import oder Zur\u00fccksetzen wird der vorherige Stand automatisch gesichert (die letzten 3). Wiederherstellen sichert vorher den aktuellen Stand.</p>
+          <div class="sfhl-backup-list"></div>
         </div>
         <div class="sfhl-set-section">
           <h3 data-i18n="Zur\u00fccksetzen">Zur\u00fccksetzen</h3>
@@ -2165,6 +2211,7 @@
   const selRuleCb   = $('.sfhl-selrule-enabled');
   const btnPosSel   = $('.sfhl-set-btnpos');
   const dokuCb      = $('.sfhl-doku-enabled');
+  const dokuHlCb    = $('.sfhl-doku-hl-enabled');
   const dokuCountEl = $('.sfhl-doku-count');
 
   rfInput.value = String(loadRefreshSecs());
@@ -2296,6 +2343,15 @@
   $('.sfhl-act-import').onclick = () => { fileInput.value = ''; fileInput.click(); };
   // v4.6.0 Geräte-Doku-Lookup
   dokuCb.onchange = () => { saveDokuOn(dokuCb.checked); toast(dokuCb.checked ? 'Doku-Lookup an' : 'Doku-Lookup aus', 'info'); };
+  if (dokuHlCb) {
+    dokuHlCb.checked = loadDokuHlOn() && DOKU_HL_SUPPORTED;
+    if (!DOKU_HL_SUPPORTED) { dokuHlCb.disabled = true; dokuHlCb.closest('.sfhl-set-row2').title = 'Dieser Browser unterstützt die CSS Custom Highlight API nicht'; }
+    dokuHlCb.onchange = () => {
+      saveDokuHlOn(dokuHlCb.checked);
+      if (dokuHlCb.checked) activateDokuHl(); else deactivateDokuHl();
+      toast(dokuHlCb.checked ? 'Auto-Markierung an' : 'Auto-Markierung aus', 'info');
+    };
+  }
   $('.sfhl-act-doku-export').onclick = () => {
     try {
       const dt=new Date(), pad=n=>String(n).padStart(2,'0'), ds=`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
@@ -2363,14 +2419,19 @@
   $('.sfhl-act-reset').onclick  = () => doReset();
   $('.sfhl-act-reset-rules').onclick = () => {
     if (!confirm(t('Markierungsregeln auf Standard zur\u00fccksetzen?'))) return;
+    pushBackup('reset-rules');
     RULES = RULE_DEFAULTS.map(e=>({...e,id:uid(),folder:null})); saveRules(); renderRules(); rescanSoon(true);
-    updateBadges(); toast('Markierungen zur\u00fcckgesetzt','info');
+    updateBadges(); renderBackups(); toast('Markierungen zur\u00fcckgesetzt','info');
   };
   $('.sfhl-act-reset-snips').onclick = () => {
     if (!confirm(t('Snippets auf Standard zur\u00fccksetzen?'))) return;
+    pushBackup('reset-snips');
     SNIPPETS = SNIP_DEFAULTS.map(e=>({...e,id:uid(),favorite:!!e.favorite})); saveSnippets(); renderSnippets();
-    updateBadges(); toast('Snippets zur\u00fcckgesetzt','info');
+    updateBadges(); renderBackups(); toast('Snippets zur\u00fcckgesetzt','info');
   };
+  $('.sfhl-backup-list').addEventListener('click', e => {
+    const b = e.target.closest('.sfhl-act-bk-restore'); if (b) restoreBackup(+b.dataset.bk);
+  });
 
   // Palette logic
   function showPalette(sw) {
@@ -2476,6 +2537,7 @@
     const file = ev.target.files?.[0]; if (!file) return;
     try {
       const raw = JSON.parse(await file.text());
+      pushBackup('import'); renderBackups(); // aktuellen Stand sichern, bevor er ersetzt wird
       if (Array.isArray(raw)) { RULES = raw.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false,alarm:e.alarm===true})); saveRules(); renderRules(); rescanSoon(true); toast(`${RULES.length} Regeln importiert`,'success'); return; }
       if (raw.rules) { RULES = raw.rules.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false,folder:e.folder||null,alarm:e.alarm===true})); saveRules(); renderRules(); rescanSoon(true); }
       if (raw.folders) { FOLDERS = raw.folders.map(f=>({id:f.id||uid(),name:String(f.name||'')})); saveFolders(); }
@@ -2488,13 +2550,54 @@
       updateBadges(); toast('Import erfolgreich','success');
     } catch { toast('Ung\u00fcltiges Format','error',3500); }
   };
+  // v4.10.0 Rotierende Auto-Backups: vor Import/Reset den aktuellen Stand sichern (max 3, neueste zuerst).
+  const BACKUP_MAX = 3;
+  const BACKUP_REASONS = { 'import':'vor Import', 'reset-all':'vor \u201eAlles zur\u00fccksetzen"', 'reset-rules':'vor \u201eMarkierungen zur\u00fccksetzen"', 'reset-snips':'vor \u201eSnippets zur\u00fccksetzen"', 'restore':'vor Wiederherstellung' };
+  function loadBackups() { try { const r = localStorage.getItem(LS_BACKUPS); const a = r ? JSON.parse(r) : []; return Array.isArray(a) ? a : []; } catch { return []; } }
+  function pushBackup(reason) {
+    try {
+      const snap = { at: Date.now(), reason, rules: RULES, folders: FOLDERS, snippets: SNIPPETS, prefix: loadPrefix(), username: loadUname() };
+      let arr = loadBackups(); arr.unshift(snap); arr = arr.slice(0, BACKUP_MAX);
+      // Quota-sicher: bei \u00dcberlauf \u00e4lteste verwerfen und erneut versuchen
+      while (arr.length) {
+        try { localStorage.setItem(LS_BACKUPS, JSON.stringify(arr)); break; }
+        catch { arr.pop(); if (!arr.length) console.warn('[SFHL] Auto-Backup zu gro\u00df f\u00fcr localStorage, \u00fcbersprungen'); }
+      }
+    } catch (e) { console.warn('[SFHL] Auto-Backup fehlgeschlagen:', e); }
+  }
+  function renderBackups() {
+    const box = $('.sfhl-backup-list'); if (!box) return;
+    const arr = loadBackups();
+    if (!arr.length) { box.innerHTML = '<p style="font-size:11px;color:#9ca3af;margin:2px">Noch keine Sicherungen vorhanden.</p>'; return; }
+    const pad = n => String(n).padStart(2,'0');
+    box.innerHTML = arr.map((s,i) => {
+      const d = new Date(s.at||0);
+      const ds = `${pad(d.getDate())}.${pad(d.getMonth()+1)}. ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      const nR = Array.isArray(s.rules)?s.rules.length:0, nS = Array.isArray(s.snippets)?s.snippets.length:0;
+      const reason = BACKUP_REASONS[s.reason] || s.reason || '';
+      return `<div class="sfhl-bk-row"><div class="sfhl-bk-meta"><span class="sfhl-bk-when">${escH(ds)}</span><span class="sfhl-bk-reason">${escH(reason)}</span><span class="sfhl-bk-counts">${nR} Regeln \u00b7 ${nS} Snippets</span></div><div class="sfhl-btn-sm sfhl-act-bk-restore" data-bk="${i}" role="button">Wiederherstellen</div></div>`;
+    }).join('');
+  }
+  function restoreBackup(idx) {
+    const arr = loadBackups(); const snap = arr[idx]; if (!snap) return;
+    if (!confirm(t('Diesen Sicherungsstand wiederherstellen? Der aktuelle Stand wird vorher gesichert.'))) return;
+    pushBackup('restore'); // aktuellen Stand sichern \u2192 Wiederherstellung ist selbst r\u00fcckg\u00e4ngig machbar
+    if (Array.isArray(snap.rules)) { RULES = snap.rules.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false,folder:e.folder||null,alarm:e.alarm===true})); saveRules(); renderRules(); rescanSoon(true); }
+    if (Array.isArray(snap.folders)) { FOLDERS = snap.folders.map(f=>({id:f.id||uid(),name:String(f.name||'')})); saveFolders(); }
+    if (Array.isArray(snap.snippets)) { SNIPPETS = snap.snippets.map(e=>({ id:e.id||uid(), trigger:String(e.trigger||''), label:String(e.label||''), body:String(e.body||''), bodyEn:String(e.bodyEn||''), category:String(e.category||''), richText:e.richText!==false, favorite:!!e.favorite, usageCount:Number(e.usageCount)||0 })); saveSnippets(true); renderSnippets(); }
+    if (snap.prefix && PREFIXES.includes(snap.prefix)) { savePrefix(snap.prefix); if (setPrefix) setPrefix.value = snap.prefix; }
+    if (snap.username) { saveUname(snap.username); if (setUname) setUname.value = snap.username; }
+    updateBadges(); renderBackups(); toast('Sicherung wiederhergestellt','success');
+  }
   function doReset() {
     if (!confirm(t('Alles auf Standard zur\u00fccksetzen? (Regeln + Snippets)'))) return;
+    pushBackup('reset-all');
     RULES = RULE_DEFAULTS.map(e=>({...e,id:uid(),folder:null})); saveRules(); renderRules(); rescanSoon(true);
     FOLDERS = []; saveFolders();
     SNIPPETS = SNIP_DEFAULTS.map(e=>({...e,id:uid(),favorite:!!e.favorite})); saveSnippets(); renderSnippets();
-    updateBadges(); toast('Zur\u00fcckgesetzt','info');
+    updateBadges(); renderBackups(); toast('Zur\u00fcckgesetzt','info');
   }
+  renderBackups(); // initiale Liste beim Panel-Aufbau
 
   // Trefferstatistik: wie viele Zeilen der aktuellen Liste trifft jede Regel
   // (unabhängig von Priorität/first-wins). 3s-Cache, damit die Regel-Suche beim Tippen
@@ -3607,6 +3710,46 @@
     closeDropdown(); // FIX #15: orphaned } from if(true) removed
   }
 
+  // v4.9.0 Fuzzy-Fallback fürs Snippet-Dropdown: greift nur, wenn die strikte
+  // Suche (startsWith/includes) nichts findet — tippfehlertolerant, ohne die
+  // exakte Suche zu verändern. Levenshtein mit früher Schranke.
+  function boundedLev(a, b, max) {
+    const la = a.length, lb = b.length;
+    if (Math.abs(la - lb) > max) return max + 1;
+    let prev = []; for (let j = 0; j <= lb; j++) prev[j] = j;
+    for (let i = 1; i <= la; i++) {
+      const cur = [i]; let rowMin = i; const ca = a.charCodeAt(i - 1);
+      for (let j = 1; j <= lb; j++) {
+        const cost = ca === b.charCodeAt(j - 1) ? 0 : 1;
+        const v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+        cur[j] = v; if (v < rowMin) rowMin = v;
+      }
+      if (rowMin > max) return max + 1; // kann nicht mehr unter die Schranke
+      prev = cur;
+    }
+    return prev[lb];
+  }
+  // 0 = kein Treffer, sonst >0 (größer = besser). Trigger zählt am stärksten.
+  function fuzzyScore(query, s) {
+    const q = query;
+    const maxDist = q.length <= 3 ? 1 : q.length <= 6 ? 2 : 3;
+    const fields = [[s.trigger, 1], [s.label, 0.7], [s.category, 0.5]];
+    let best = 0;
+    for (const [raw, weight] of fields) {
+      const txt = (raw || '').toLowerCase(); if (!txt) continue;
+      const tokens = [txt, ...txt.split(/[\s\-_/]+/)].filter(Boolean);
+      for (const tok of tokens) {
+        // q gegen den Wortanfang vergleichen (Länge q bzw. q+1) → Tippfehler vorn
+        for (const len of [q.length, q.length + 1]) {
+          const piece = tok.slice(0, len); if (!piece) continue;
+          const d = boundedLev(q, piece, maxDist);
+          if (d <= maxDist) { const score = (1 - d / (q.length + 1)) * weight; if (score > best) best = score; }
+        }
+      }
+    }
+    return best;
+  }
+
   function showDropdown(el, triggerInfo) {
     let query = triggerInfo.text.toLowerCase();
     // "en " als Sprach-Switch: zeigt nur Snippets mit EN-Variante, nutzt EN-Body
@@ -3619,7 +3762,7 @@
       query = query.replace(/^de[\s:]*/, '');
     }
     const activeLang = forceLang || loadDefaultLang();
-    const matches = SNIPPETS
+    const strictMatches = SNIPPETS
       .filter(s => {
         // Im EN-Modus nur Snippets mit EN-Variante
         if (forceLang === 'en' && !s.bodyEn) return false;
@@ -3629,6 +3772,23 @@
         if (b.favorite !== a.favorite) return (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0);
         return (b.usageCount||0) - (a.usageCount||0);
       });
+    // Fuzzy-Fallback (Tippfehlertoleranz): nur wenn die strikte Suche leer bleibt
+    let isFuzzy = false;
+    let matches = strictMatches;
+    if (strictMatches.length === 0 && query.length >= 2) {
+      isFuzzy = true;
+      matches = SNIPPETS
+        .filter(s => !(forceLang === 'en' && !s.bodyEn))
+        .map(s => ({ s, score: fuzzyScore(query, s) }))
+        .filter(x => x.score > 0)
+        .sort((a, b) => {
+          if (b.s.favorite !== a.s.favorite) return (b.s.favorite ? 1 : 0) - (a.s.favorite ? 1 : 0);
+          if (b.score !== a.score) return b.score - a.score;
+          return (b.s.usageCount || 0) - (a.s.usageCount || 0);
+        })
+        .slice(0, 8)
+        .map(x => x.s);
+    }
     if (matches.length === 0) { closeDropdown(); return; }
 
     const prefix = loadPrefix();
@@ -3640,7 +3800,7 @@
       const langBadge = s.bodyEn ? `<span style="font-size:9px;background:${activeLang==='en'?'#dbeafe':'#f3f4f6'};color:${activeLang==='en'?'#1d4ed8':'#6b7280'};padding:0 4px;border-radius:3px;margin-left:4px">${safeLang}</span>` : '';
       const numBadge = i < 9 ? `<span class="sfhl-dd-num" title="Alt+${i+1}">${i+1}</span>` : '';
       return `<div class="sfhl-dd-item${i===0?' selected':''}" data-snip-id="${s.id}"><div class="sfhl-dd-item-top">${numBadge}<span class="sfhl-dd-trigger">${escH(prefix+s.trigger)}</span><span class="sfhl-dd-label">${escH(s.label)}${favBadge}${langBadge}</span><span class="sfhl-dd-cat">${escH(s.category)}</span></div><div class="sfhl-dd-preview">${escH(preview)}${preview.length>=70?'\u2026':''}</div></div>`;
-    }).join('') + `<div class="sfhl-dd-hint"><span>${loadWrapOn()?'<span style="color:#10b981;font-weight:600">\u2713 Anrede+Signatur</span> \u2022 ':''}Enter = einf\u00fcgen \u2022 \u2191\u2193 = navigieren \u2022 Alt+1\u20139 = direkt \u2022 Esc = schlie\u00dfen</span></div>`;
+    }).join('') + `<div class="sfhl-dd-hint"><span>${isFuzzy?'<span style="color:#f59e0b;font-weight:600">\u2248 \u00e4hnliche Treffer</span> \u2022 ':''}${loadWrapOn()?'<span style="color:#10b981;font-weight:600">\u2713 Anrede+Signatur</span> \u2022 ':''}Enter = einf\u00fcgen \u2022 \u2191\u2193 = navigieren \u2022 Alt+1\u20139 = direkt \u2022 Esc = schlie\u00dfen</span></div>`;
 
     const pos = getCaretCoords(el);
     let top = pos.top, left = pos.left;
@@ -4207,6 +4367,96 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   }
   document.addEventListener('mouseup', handleSelectionMouseup);
   document.addEventListener('mousedown', handleSelectionMousedown, true);
+
+  // ===== v4.11.0 Geräte-Doku Stufe 2: Auto-Markierung via CSS Custom Highlight API =====
+  // Scannt das Light-DOM nach Gerätecodes und markiert sie ohne DOM-Eingriff (Highlight API).
+  // Shift+Mauszeiger über einem Code zeigt das Doku-Popup. Opt-in, experimentell.
+  let _dokuHlEntries = [];          // {node,start,end,code,type} — für Hover-Treffer
+  let _dokuHlObserver = null;
+  let _dokuHlScanScheduled = false;
+  const DOKU_HL_MAX = 400;          // Obergrenze Markierungen pro Scan (Performance)
+  const DOKU_TOKEN_RE = /[A-Za-z0-9][A-Za-z0-9.\/+-]{2,39}/g; // zusammenhängende Code-Tokens
+
+  function clearDokuHl() {
+    _dokuHlEntries = [];
+    try { if (window.CSS && CSS.highlights) CSS.highlights.delete('sfhl-doku'); } catch {}
+  }
+  function scanDokuHl() {
+    if (!DOKU_HL_SUPPORTED || !loadDokuHlOn()) return;
+    try {
+      const entries = [];
+      const hl = new Highlight();
+      const root = document.querySelector('.oneContent, .slds-template__container, main') || document.body;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(n) {
+          if (!n.nodeValue || n.nodeValue.length < 3) return NodeFilter.FILTER_REJECT;
+          const p = n.parentElement; if (!p) return NodeFilter.FILTER_REJECT;
+          const tag = p.tagName;
+          if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA' || p.isContentEditable) return NodeFilter.FILTER_REJECT;
+          if (p.closest('.sfhl-panel,.sfhl-doku-pop,.sfhl-sel-btn,.sfhl-trigger,.sfhl-dropdown')) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      let nodes = 0, node;
+      while ((node = walker.nextNode())) {
+        if (++nodes > 6000 || entries.length >= DOKU_HL_MAX) break;
+        const text = node.nodeValue;
+        DOKU_TOKEN_RE.lastIndex = 0;
+        let m;
+        while ((m = DOKU_TOKEN_RE.exec(text))) {
+          const tok = m[0];
+          const type = detectCodeType(tok);
+          if (!type || type === 'auftrag') continue; // reine Ziffern: zu viele Falsch-Treffer
+          try {
+            const r = document.createRange();
+            r.setStart(node, m.index); r.setEnd(node, m.index + tok.length);
+            hl.add(r);
+            entries.push({ node, start: m.index, end: m.index + tok.length, code: tok, type });
+          } catch {}
+          if (entries.length >= DOKU_HL_MAX) break;
+        }
+      }
+      _dokuHlEntries = entries;
+      if (entries.length) CSS.highlights.set('sfhl-doku', hl); else CSS.highlights.delete('sfhl-doku');
+    } catch (e) { console.warn('[SFHL] Doku-Auto-Markierung Scan-Fehler:', e); }
+  }
+  function scheduleDokuHlScan() {
+    if (_dokuHlScanScheduled) return;
+    _dokuHlScanScheduled = true;
+    const run = () => { _dokuHlScanScheduled = false; scanDokuHl(); };
+    setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(run, { timeout: 1200 }) : run()), 700);
+  }
+  function activateDokuHl() {
+    if (!DOKU_HL_SUPPORTED) return;
+    scheduleDokuHlScan();
+    if (!_dokuHlObserver) {
+      _dokuHlObserver = new MutationObserver(() => { if (loadDokuHlOn()) scheduleDokuHlScan(); });
+      try { _dokuHlObserver.observe(document.body, { childList: true, subtree: true, characterData: true }); } catch {}
+    }
+  }
+  function deactivateDokuHl() {
+    if (_dokuHlObserver) { _dokuHlObserver.disconnect(); _dokuHlObserver = null; }
+    clearDokuHl();
+  }
+  // Shift+Hover über einem markierten Code → Doku-Popup (Treffer per caretRangeFromPoint)
+  let _dokuHlHoverCode = null, _dokuHlMoveAt = 0;
+  document.addEventListener('mousemove', e => {
+    if (!DOKU_HL_SUPPORTED || !loadDokuHlOn() || !_dokuHlEntries.length) return;
+    if (!e.shiftKey) { _dokuHlHoverCode = null; return; }
+    const now = Date.now(); if (now - _dokuHlMoveAt < 60) return; _dokuHlMoveAt = now; // Throttle
+    if (e.target.closest && e.target.closest('.sfhl-doku-pop,.sfhl-panel')) return;
+    let cr = null; try { cr = document.caretRangeFromPoint(e.clientX, e.clientY); } catch {}
+    if (!cr) return;
+    const hit = _dokuHlEntries.find(en => en.node === cr.startContainer && cr.startOffset >= en.start && cr.startOffset <= en.end);
+    if (!hit) return;
+    if (_dokuHlHoverCode === hit.code && _dokuPop) return; // schon offen
+    if (!loadDokuLinks().length) return;                   // kein Toast-Spam beim Hovern
+    _dokuHlHoverCode = hit.code;
+    showDokuPopup(e.pageX + 6, e.pageY + 12, hit.code, hit.type);
+  }, true);
+  document.addEventListener('keyup', e => { if (e.key === 'Shift') _dokuHlHoverCode = null; });
+  if (loadDokuHlOn()) activateDokuHl(); // beim Start aktivieren, falls eingeschaltet
+
   function snapshotMarked() { const set=new Set();document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||c.textContent||'');set.add(t);});return set; }
   function highlightAndBlink(snap) {
     highlightRows(true);
