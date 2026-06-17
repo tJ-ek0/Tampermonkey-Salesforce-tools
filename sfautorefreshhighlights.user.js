@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.11.0
+// @version      4.12.0
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,17 +19,19 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.11.0';
+  const VERSION = '4.12.0';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
   const CHANGELOG = {
-    '4.11.0': {
+    '4.12.0': {
       de: [
-        'Geräte-Doku (experimentell): Optionale Auto-Markierung. Wenn aktiviert (Einstellungen → Geräte-Doku → Auto-Markierung), werden erkannte Gerätecodes auf der Seite dezent unterstrichen; mit gedrückter Shift-Taste über einen Code fahren öffnet die Doku-Links — ganz ohne vorher zu markieren.',
+        'Geräte-Doku ist jetzt ein eigener Reiter oben im Panel (neben „Aktualisierung") statt unter den Einstellungen — es ist ja eine eigene Funktion. (Die experimentelle Auto-Markierung wurde wieder entfernt.)',
+        'Der Einstieg sitzt jetzt immer in der Salesforce-Kopfleiste (das Tools-Icon oben rechts). Die Einstellung „Button-Position" ist entfallen; Alt+R öffnet das Panel weiterhin.',
       ],
       en: [
-        'Device docs (experimental): optional auto-highlight. When enabled (Settings → Device docs → Auto-highlight), detected device codes are subtly underlined on the page; hovering a code while holding Shift opens the doc links — no need to select first.',
+        'Device docs is now its own tab at the top of the panel (next to “Refresh”) instead of under Settings — it is a feature of its own. (The experimental auto-highlight was removed again.)',
+        'The entry point now always sits in the Salesforce header (the tools icon, top right). The “Button position” setting was removed; Alt+R still opens the panel.',
       ],
     },
     '4.10.0': {
@@ -373,19 +375,14 @@
   function saveLegendOn(on) { localStorage.setItem('sfhl_legend', on ? '1' : '0'); }
   function loadSelRuleOn() { return localStorage.getItem('sfhl_selrule') !== '0'; }
   function saveSelRuleOn(on) { localStorage.setItem('sfhl_selrule', on ? '1' : '0'); }
-  // v4.5.0 #4: Button-Position (header | floating | hidden). Default floating = bisheriges Verhalten.
-  function loadBtnPos() { const v = localStorage.getItem('sfhl_btn_pos'); return (v === 'header' || v === 'hidden') ? v : 'floating'; }
-  function saveBtnPos(v) { localStorage.setItem('sfhl_btn_pos', v); }
+  // v4.12.0: Button fest in der SF-Kopfleiste (Einstellung entfernt). Floating bleibt nur als
+  // automatischer Fallback, falls die Header-Injektion scheitert (siehe updateVis).
+  function loadBtnPos() { return 'header'; }
   // v4.6.0 Geräte-Doku-Lookup: KEINE URLs als Default (öffentliches Repo) — alle Link-
   // Vorlagen werden lokal per Config-Import geladen. Eintrag: {id,key,label,type,url}.
   // type ∈ root|serial|auftrag|order|free. url nutzt %s als Platzhalter (alle Vorkommen).
   function loadDokuOn() { return localStorage.getItem('sfhl_doku_enabled') !== '0'; }
   function saveDokuOn(on) { localStorage.setItem('sfhl_doku_enabled', on ? '1' : '0'); }
-  // v4.11.0 Stufe 2: Auto-Markierung (default aus, experimentell). Früh definiert wegen TDZ
-  // (Settings-Wiring liest DOKU_HL_SUPPORTED beim Init, lange vor dem Stufe-2-Block).
-  const DOKU_HL_SUPPORTED = !!(window.CSS && window.CSS.highlights && window.Highlight && document.caretRangeFromPoint);
-  function loadDokuHlOn() { return localStorage.getItem('sfhl_doku_hl_enabled') === '1'; }
-  function saveDokuHlOn(on) { localStorage.setItem('sfhl_doku_hl_enabled', on ? '1' : '0'); }
   function loadDokuLinks() {
     try { const raw = localStorage.getItem('sfhl_doku_links'); if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.map(e => ({ id:e.id||uid(), key:String(e.key||''), label:String(e.label||''), type:String(e.type||'root'), url:String(e.url||'') })).filter(e => e.url && /%s/.test(e.url)); } } catch {}
     return [];
@@ -1437,8 +1434,9 @@
     .sfhl-ib:hover{background:#f3f4f6;color:#111} .sfhl-ib svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
     .sfhl-ib.sfhl-help-btn.active{background:#eef4ff;color:#0176d3}
     .sfhl-ib.sfhl-settings-btn.active{background:#eef4ff;color:#0176d3}
-    .sfhl-tabs{display:flex;gap:0;margin:0 -16px;padding:0 16px}
-    .sfhl-tab{padding:8px 16px;font-size:12.5px;font-weight:500;color:#9ca3af;cursor:pointer;border-bottom:2px solid transparent;transition:color .12s,border-color .12s;white-space:nowrap}
+    .sfhl-tabs{display:flex;gap:0;margin:0 -16px;padding:0 16px;overflow-x:auto;scrollbar-width:none}
+    .sfhl-tabs::-webkit-scrollbar{display:none}
+    .sfhl-tab{padding:8px 13px;font-size:12.5px;font-weight:500;color:#9ca3af;cursor:pointer;border-bottom:2px solid transparent;transition:color .12s,border-color .12s;white-space:nowrap;flex-shrink:0}
     .sfhl-tab:hover{color:#374151} .sfhl-tab.active{color:#0176d3;border-bottom-color:#0176d3}
     .sfhl-tab-badge{font-size:10px;font-weight:600;background:#e5e7eb;color:#6b7280;padding:0 5px;border-radius:99px;margin-left:4px}
     .sfhl-tab.active .sfhl-tab-badge{background:#eef4ff;color:#0176d3}
@@ -1511,8 +1509,6 @@
     .sfhl-doku-lnk:hover{background:#0176d3;color:#fff;border-color:#0176d3}
     .sfhl-doku-more{margin-top:8px;font-size:11px;font-weight:600;color:#0176d3;cursor:pointer;user-select:none}
     .sfhl-doku-more:hover{text-decoration:underline}
-    /* v4.11.0 Stufe 2: Auto-Markierung erkannter Gerätecodes (CSS Custom Highlight API) */
-    ::highlight(sfhl-doku){background-color:rgba(1,118,211,.16);text-decoration:underline dotted #0176d3}
     /* v4.7.0 Vorlagen-Editor (Stufe 1.5) */
     .sfhl-doku-ed-wrap{margin-top:8px}
     .sfhl-doku-ed{max-height:280px;overflow-y:auto;overflow-x:hidden;padding:2px}
@@ -1833,6 +1829,7 @@
         <div class="sfhl-tab active" data-tab="rules"><span data-i18n="Markierung">Markierung</span> <span class="sfhl-tab-badge sfhl-rules-count">0</span></div>
         <div class="sfhl-tab" data-tab="snippets"><span data-i18n="Snippets">Snippets</span> <span class="sfhl-tab-badge sfhl-snip-count">0</span></div>
         <div class="sfhl-tab" data-tab="refresh" data-i18n="Aktualisierung">Aktualisierung</div>
+        <div class="sfhl-tab" data-tab="doku" data-i18n="Doku">Doku</div>
       </div>
     </div>
 
@@ -1932,6 +1929,29 @@
       </div>
     </div>
 
+    <!-- ===== Ger\u00e4te-Doku Tab ===== -->
+    <div class="sfhl-tab-content" data-tab="doku">
+      <div class="sfhl-settings-body">
+        <div class="sfhl-set-section">
+          <h3 data-i18n="Ger\u00e4te-Doku">Ger\u00e4te-Doku</h3>
+          <div class="sfhl-set-row2"><label data-i18n="Doku-Lookup">Doku-Lookup</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-doku-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Ger\u00e4tecode markieren \u2192 \u201e\ud83d\udcc4 Doku-Links"</span></div>
+          <p style="font-size:11px;color:#9ca3af;margin:2px 0 6px"><span class="sfhl-doku-count">0</span> Link-Vorlagen geladen. Vorlagen werden per Config-Datei importiert (keine im Skript hinterlegt).</p>
+          <div class="sfhl-set-actions">
+            <div class="sfhl-btn-sm sfhl-act-doku-edit" role="button">\u270e Vorlagen bearbeiten</div>
+            <div class="sfhl-btn-sm sfhl-act-doku-import" role="button">\u2191 Importieren</div>
+            <div class="sfhl-btn-sm sfhl-act-doku-export" role="button">\u2193 Exportieren</div>
+            <div class="sfhl-btn-danger sfhl-act-doku-clear" role="button">Leeren</div>
+          </div>
+          <div class="sfhl-doku-ed-wrap" style="display:none">
+            <div class="sfhl-doku-ed"></div>
+            <div class="sfhl-set-actions" style="margin-top:6px">
+              <div class="sfhl-btn-sm sfhl-btn-primary sfhl-act-doku-add" role="button">+ Vorlage</div>
+            </div>
+            <p class="sfhl-de-hint">K\u00fcrzel = Link-Beschriftung (z.\u202fB. BA, TI). URL muss <b>%s</b> enthalten \u2014 wird durch den markierten Code ersetzt. Typ steuert, bei welcher Code-Art die Vorlage erscheint.</p>
+          </div>
+        </div>
+      </div>
+    </div>
     <!-- ===== Einstellungen Tab ===== -->
     <div class="sfhl-tab-content" data-tab="settings">
       <div class="sfhl-settings-body">
@@ -1940,7 +1960,6 @@
           <div class="sfhl-set-row2"><label data-i18n="Trigger-Prefix">Trigger-Prefix</label><select class="sfhl-set-prefix">${PREFIXES.map(p=>`<option value="${p}">${p}</option>`).join('')}</select></div>
           <div class="sfhl-set-row2"><label data-i18n="Dein Name">Dein Name</label><input type="text" class="sfhl-set-uname" placeholder="Max Mustermann"></div>
           <div class="sfhl-set-row2"><label data-i18n="Default language">Default language</label><select class="sfhl-set-lang"><option value="de">Deutsch</option><option value="en">English</option></select></div>
-          <div class="sfhl-set-row2"><label data-i18n="Button-Position">Button</label><select class="sfhl-set-btnpos"><option value="floating" data-i18n="Schwebend">Schwebend (unten rechts)</option><option value="header" data-i18n="SF-Kopfleiste">SF-Kopfleiste</option><option value="hidden" data-i18n="Ausgeblendet">Ausgeblendet (nur Alt+R)</option></select></div>
           <p style="font-size:11px;color:#9ca3af;margin-top:6px">Tip: Type <code>;;en</code> to temporarily show English snippets, <code>;;de</code> for German. Das Panel öffnet immer auch mit <code>Alt+R</code>.</p>
         </div>
         <div class="sfhl-set-section">
@@ -1962,25 +1981,6 @@
           <h3 data-i18n="Liste">Liste</h3>
           <div class="sfhl-set-row2"><label data-i18n="Farb-Legende">Farb-Legende</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-legend-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Legende der aktiven Markierungen \u00fcber der Case-Liste</span></div>
           <div class="sfhl-set-row2"><label data-i18n="Regel aus Auswahl">Regel aus Auswahl</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-selrule-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Listentext markieren \u2192 Schaltfl\u00e4che \u201eRegel aus Auswahl"</span></div>
-        </div>
-        <div class="sfhl-set-section">
-          <h3 data-i18n="Ger\u00e4te-Doku">Ger\u00e4te-Doku</h3>
-          <div class="sfhl-set-row2"><label data-i18n="Doku-Lookup">Doku-Lookup</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-doku-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Ger\u00e4tecode markieren \u2192 \u201e\ud83d\udcc4 Doku-Links"</span></div>
-          <div class="sfhl-set-row2"><label data-i18n="Auto-Markierung">Auto-Markierung</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-doku-hl-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Codes auf der Seite markieren \u00b7 <b>Shift</b>+Mauszeiger zeigt Links (experimentell)</span></div>
-          <p style="font-size:11px;color:#9ca3af;margin:2px 0 6px"><span class="sfhl-doku-count">0</span> Link-Vorlagen geladen. Vorlagen werden per Config-Datei importiert (keine im Skript hinterlegt).</p>
-          <div class="sfhl-set-actions">
-            <div class="sfhl-btn-sm sfhl-act-doku-edit" role="button">\u270e Vorlagen bearbeiten</div>
-            <div class="sfhl-btn-sm sfhl-act-doku-import" role="button">\u2191 Importieren</div>
-            <div class="sfhl-btn-sm sfhl-act-doku-export" role="button">\u2193 Exportieren</div>
-            <div class="sfhl-btn-danger sfhl-act-doku-clear" role="button">Leeren</div>
-          </div>
-          <div class="sfhl-doku-ed-wrap" style="display:none">
-            <div class="sfhl-doku-ed"></div>
-            <div class="sfhl-set-actions" style="margin-top:6px">
-              <div class="sfhl-btn-sm sfhl-btn-primary sfhl-act-doku-add" role="button">+ Vorlage</div>
-            </div>
-            <p class="sfhl-de-hint">K\u00fcrzel = Link-Beschriftung (z.\u202fB. BA, TI). URL muss <b>%s</b> enthalten \u2014 wird durch den markierten Code ersetzt. Typ steuert, bei welcher Code-Art die Vorlage erscheint.</p>
-          </div>
         </div>
         <div class="sfhl-set-section">
           <h3 data-i18n="Export">Export</h3>
@@ -2209,9 +2209,7 @@
   const slaNotifyCb = $('.sfhl-sla-notify');
   const legendCb    = $('.sfhl-legend-enabled');
   const selRuleCb   = $('.sfhl-selrule-enabled');
-  const btnPosSel   = $('.sfhl-set-btnpos');
   const dokuCb      = $('.sfhl-doku-enabled');
-  const dokuHlCb    = $('.sfhl-doku-hl-enabled');
   const dokuCountEl = $('.sfhl-doku-count');
 
   rfInput.value = String(loadRefreshSecs());
@@ -2226,7 +2224,6 @@
   slaNotifyCb.checked = loadSla('notify');
   legendCb.checked = loadLegendOn();
   selRuleCb.checked = loadSelRuleOn();
-  btnPosSel.value = loadBtnPos();
   dokuCb.checked = loadDokuOn();
   function updateDokuCount() { if (dokuCountEl) dokuCountEl.textContent = String(loadDokuLinks().length); }
   // v4.7.0 Vorlagen-Editor (Stufe 1.5): In-UI bearbeiten statt nur Import.
@@ -2343,15 +2340,6 @@
   $('.sfhl-act-import').onclick = () => { fileInput.value = ''; fileInput.click(); };
   // v4.6.0 Geräte-Doku-Lookup
   dokuCb.onchange = () => { saveDokuOn(dokuCb.checked); toast(dokuCb.checked ? 'Doku-Lookup an' : 'Doku-Lookup aus', 'info'); };
-  if (dokuHlCb) {
-    dokuHlCb.checked = loadDokuHlOn() && DOKU_HL_SUPPORTED;
-    if (!DOKU_HL_SUPPORTED) { dokuHlCb.disabled = true; dokuHlCb.closest('.sfhl-set-row2').title = 'Dieser Browser unterstützt die CSS Custom Highlight API nicht'; }
-    dokuHlCb.onchange = () => {
-      saveDokuHlOn(dokuHlCb.checked);
-      if (dokuHlCb.checked) activateDokuHl(); else deactivateDokuHl();
-      toast(dokuHlCb.checked ? 'Auto-Markierung an' : 'Auto-Markierung aus', 'info');
-    };
-  }
   $('.sfhl-act-doku-export').onclick = () => {
     try {
       const dt=new Date(), pad=n=>String(n).padStart(2,'0'), ds=`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
@@ -3384,7 +3372,6 @@
   };
   legendCb.onchange = () => { saveLegendOn(legendCb.checked); if(legendCb.checked){ if(isCaseListPage())highlightRows(false); } else removeLegend(); toast(legendCb.checked ? 'Farb-Legende an' : 'Farb-Legende aus', 'info'); };
   selRuleCb.onchange = () => { saveSelRuleOn(selRuleCb.checked); if(!selRuleCb.checked)hideSelButton(); toast(selRuleCb.checked ? 'Regel aus Auswahl an' : 'Regel aus Auswahl aus', 'info'); };
-  btnPosSel.onchange = () => { saveBtnPos(btnPosSel.value); updateVis(); const lbl = btnPosSel.value==='header'?'SF-Kopfleiste':btnPosSel.value==='hidden'?'ausgeblendet (Alt+R)':'schwebend'; toast('Button: '+lbl, 'info'); };
   wrapAnrSel.onchange = () => saveWrapAnrede(wrapAnrSel.value);
   wrapSigSel.onchange = () => saveWrapSignatur(wrapSigSel.value);
 
@@ -4367,95 +4354,6 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   }
   document.addEventListener('mouseup', handleSelectionMouseup);
   document.addEventListener('mousedown', handleSelectionMousedown, true);
-
-  // ===== v4.11.0 Geräte-Doku Stufe 2: Auto-Markierung via CSS Custom Highlight API =====
-  // Scannt das Light-DOM nach Gerätecodes und markiert sie ohne DOM-Eingriff (Highlight API).
-  // Shift+Mauszeiger über einem Code zeigt das Doku-Popup. Opt-in, experimentell.
-  let _dokuHlEntries = [];          // {node,start,end,code,type} — für Hover-Treffer
-  let _dokuHlObserver = null;
-  let _dokuHlScanScheduled = false;
-  const DOKU_HL_MAX = 400;          // Obergrenze Markierungen pro Scan (Performance)
-  const DOKU_TOKEN_RE = /[A-Za-z0-9][A-Za-z0-9.\/+-]{2,39}/g; // zusammenhängende Code-Tokens
-
-  function clearDokuHl() {
-    _dokuHlEntries = [];
-    try { if (window.CSS && CSS.highlights) CSS.highlights.delete('sfhl-doku'); } catch {}
-  }
-  function scanDokuHl() {
-    if (!DOKU_HL_SUPPORTED || !loadDokuHlOn()) return;
-    try {
-      const entries = [];
-      const hl = new Highlight();
-      const root = document.querySelector('.oneContent, .slds-template__container, main') || document.body;
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-        acceptNode(n) {
-          if (!n.nodeValue || n.nodeValue.length < 3) return NodeFilter.FILTER_REJECT;
-          const p = n.parentElement; if (!p) return NodeFilter.FILTER_REJECT;
-          const tag = p.tagName;
-          if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA' || p.isContentEditable) return NodeFilter.FILTER_REJECT;
-          if (p.closest('.sfhl-panel,.sfhl-doku-pop,.sfhl-sel-btn,.sfhl-trigger,.sfhl-dropdown')) return NodeFilter.FILTER_REJECT;
-          return NodeFilter.FILTER_ACCEPT;
-        }
-      });
-      let nodes = 0, node;
-      while ((node = walker.nextNode())) {
-        if (++nodes > 6000 || entries.length >= DOKU_HL_MAX) break;
-        const text = node.nodeValue;
-        DOKU_TOKEN_RE.lastIndex = 0;
-        let m;
-        while ((m = DOKU_TOKEN_RE.exec(text))) {
-          const tok = m[0];
-          const type = detectCodeType(tok);
-          if (!type || type === 'auftrag') continue; // reine Ziffern: zu viele Falsch-Treffer
-          try {
-            const r = document.createRange();
-            r.setStart(node, m.index); r.setEnd(node, m.index + tok.length);
-            hl.add(r);
-            entries.push({ node, start: m.index, end: m.index + tok.length, code: tok, type });
-          } catch {}
-          if (entries.length >= DOKU_HL_MAX) break;
-        }
-      }
-      _dokuHlEntries = entries;
-      if (entries.length) CSS.highlights.set('sfhl-doku', hl); else CSS.highlights.delete('sfhl-doku');
-    } catch (e) { console.warn('[SFHL] Doku-Auto-Markierung Scan-Fehler:', e); }
-  }
-  function scheduleDokuHlScan() {
-    if (_dokuHlScanScheduled) return;
-    _dokuHlScanScheduled = true;
-    const run = () => { _dokuHlScanScheduled = false; scanDokuHl(); };
-    setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(run, { timeout: 1200 }) : run()), 700);
-  }
-  function activateDokuHl() {
-    if (!DOKU_HL_SUPPORTED) return;
-    scheduleDokuHlScan();
-    if (!_dokuHlObserver) {
-      _dokuHlObserver = new MutationObserver(() => { if (loadDokuHlOn()) scheduleDokuHlScan(); });
-      try { _dokuHlObserver.observe(document.body, { childList: true, subtree: true, characterData: true }); } catch {}
-    }
-  }
-  function deactivateDokuHl() {
-    if (_dokuHlObserver) { _dokuHlObserver.disconnect(); _dokuHlObserver = null; }
-    clearDokuHl();
-  }
-  // Shift+Hover über einem markierten Code → Doku-Popup (Treffer per caretRangeFromPoint)
-  let _dokuHlHoverCode = null, _dokuHlMoveAt = 0;
-  document.addEventListener('mousemove', e => {
-    if (!DOKU_HL_SUPPORTED || !loadDokuHlOn() || !_dokuHlEntries.length) return;
-    if (!e.shiftKey) { _dokuHlHoverCode = null; return; }
-    const now = Date.now(); if (now - _dokuHlMoveAt < 60) return; _dokuHlMoveAt = now; // Throttle
-    if (e.target.closest && e.target.closest('.sfhl-doku-pop,.sfhl-panel')) return;
-    let cr = null; try { cr = document.caretRangeFromPoint(e.clientX, e.clientY); } catch {}
-    if (!cr) return;
-    const hit = _dokuHlEntries.find(en => en.node === cr.startContainer && cr.startOffset >= en.start && cr.startOffset <= en.end);
-    if (!hit) return;
-    if (_dokuHlHoverCode === hit.code && _dokuPop) return; // schon offen
-    if (!loadDokuLinks().length) return;                   // kein Toast-Spam beim Hovern
-    _dokuHlHoverCode = hit.code;
-    showDokuPopup(e.pageX + 6, e.pageY + 12, hit.code, hit.type);
-  }, true);
-  document.addEventListener('keyup', e => { if (e.key === 'Shift') _dokuHlHoverCode = null; });
-  if (loadDokuHlOn()) activateDokuHl(); // beim Start aktivieren, falls eingeschaltet
 
   function snapshotMarked() { const set=new Set();document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||c.textContent||'');set.add(t);});return set; }
   function highlightAndBlink(snap) {
