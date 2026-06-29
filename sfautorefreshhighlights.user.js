@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.12.0
+// @version      4.13.0
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
 // @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
 // @license      MIT
@@ -19,11 +19,19 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.12.0';
+  const VERSION = '4.13.0';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
   // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
   const CHANGELOG = {
+    '4.13.0': {
+      de: [
+        'Aufgeräumt fürs Wesentliche: Die „Vorschau vor dem Einfügen" und die Farb-Legende über der Case-Liste wurden entfernt. (Markierungen, Snippets, Auto-Refresh und die Geräte-Doku bleiben unverändert.)',
+      ],
+      en: [
+        'Trimmed to the essentials: the „preview before inserting“ and the color legend above the case list were removed. (Highlights, snippets, auto-refresh and device docs are unchanged.)',
+      ],
+    },
     '4.12.0': {
       de: [
         'Geräte-Doku ist jetzt ein eigener Reiter oben im Panel (neben „Aktualisierung") statt unter den Einstellungen — es ist ja eine eigene Funktion. (Die experimentelle Auto-Markierung wurde wieder entfernt.)',
@@ -182,7 +190,6 @@
   const LS_LAST_EXPORT = 'sfhl_last_export';    // Timestamp des letzten Exports (Backup-Reminder)
   const LS_BACKUP_HINT = 'sfhl_backup_hint_at'; // Timestamp des letzten Backup-Hinweises
   const LS_BACKUPS = 'sfhl_backups_v1';         // rotierende Auto-Backups (max 3) vor Import/Reset
-  const LS_PREVIEW_ON  = 'sfhl_preview_enabled'; // Feature 2 (v4.4.0): Vorschau vor dem Einfügen an/aus
   const LS_LAST_VER    = 'sfhl_last_seen_version'; // Feature 3 (v4.4.0): zuletzt gesehene Version für „Was ist neu"
 
   // ===== Helpers =====
@@ -364,15 +371,10 @@
   function saveWrapAnrede(t) { localStorage.setItem(LS_WRAP_ANR, t); }
   function loadWrapSignatur() { return localStorage.getItem(LS_WRAP_SIG) || 'sig'; }
   function saveWrapSignatur(t) { localStorage.setItem(LS_WRAP_SIG, t); }
-  // Feature 2 (v4.4.0): Vorschau vor dem Einfügen (optional, Default aus)
-  function loadPreviewOn() { return localStorage.getItem(LS_PREVIEW_ON) === '1'; }
-  function savePreviewOn(on) { localStorage.setItem(LS_PREVIEW_ON, on?'1':'0'); }
   // v4.5.0: SLA-Alarm-Kanäle (sfhl_sla_blink/sound/notify). Blink default an, Rest aus.
   function loadSla(k) { const v = localStorage.getItem('sfhl_sla_' + k); return k === 'blink' ? v !== '0' : v === '1'; }
   function saveSla(k, on) { localStorage.setItem('sfhl_sla_' + k, on ? '1' : '0'); }
-  // v4.5.0: Listen-Features (Farb-Legende #2, Regel aus Auswahl #3) — beide default an.
-  function loadLegendOn() { return localStorage.getItem('sfhl_legend') !== '0'; }
-  function saveLegendOn(on) { localStorage.setItem('sfhl_legend', on ? '1' : '0'); }
+  // v4.5.0: Regel aus Auswahl (#3) — default an.
   function loadSelRuleOn() { return localStorage.getItem('sfhl_selrule') !== '0'; }
   function saveSelRuleOn(on) { localStorage.setItem('sfhl_selrule', on ? '1' : '0'); }
   // v4.12.0: Button fest in der SF-Kopfleiste (Einstellung entfernt). Floating bleibt nur als
@@ -521,8 +523,6 @@
     'Vorschau': 'Preview',
     'Vorschau an': 'Preview on',
     'Vorschau aus': 'Preview off',
-    'Vorschau vor dem Einfügen': 'Preview before inserting',
-    'Vor dem Einfügen Vorschau zeigen und {eingabe:}-Felder abfragen': 'Show a preview before inserting and ask for {eingabe:} fields',
     'Einfügen': 'Insert',
     'Abbrechen': 'Cancel',
     'Was ist neu': "What's new",
@@ -1490,13 +1490,6 @@
     .sfhl-ra.toggle-off{color:#9ca3af} .sfhl-ra.toggle-off svg{stroke:#9ca3af}
     .sfhl-ra.alarm-on{color:#dc2626} .sfhl-ra.alarm-on svg{stroke:#dc2626;fill:#fee2e2}
     .sfhl-ra.alarm-off svg{stroke:#cbd5e1;fill:none} .sfhl-ra.alarm-off:hover svg{stroke:#dc2626}
-    /* #2 Farb-Legende über der Case-Liste */
-    .sfhl-legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 10px;margin:0 0 4px;background:#f8f9fb;border:1px solid #e5e7eb;border-radius:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
-    .sfhl-legend-ttl{font-size:10.5px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.4px;margin-right:2px}
-    .sfhl-legend-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#374151;background:#fff;border:1px solid #e5e7eb;border-radius:99px;padding:2px 8px}
-    .sfhl-legend-chip b{color:#0176d3;font-size:11px}
-    .sfhl-legend-sw{width:10px;height:10px;border-radius:3px;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
-    .sfhl-legend-bell{font-size:10px}
     /* #3 „Regel aus Auswahl"-Button */
     .sfhl-sel-btn{position:absolute;z-index:2147483646;background:#0176d3;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:12px;font-weight:600;padding:5px 10px;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;user-select:none;white-space:nowrap}
     .sfhl-sel-btn:hover{background:#014486}
@@ -1968,7 +1961,6 @@
           <div class="sfhl-set-row2"><label data-i18n="Anrede">Anrede</label><select class="sfhl-wrap-anrede"></select></div>
           <div class="sfhl-set-row2"><label data-i18n="Signatur">Signatur</label><select class="sfhl-wrap-sig"></select></div>
           <p style="font-size:11px;color:#9ca3af;margin-top:6px">Wenn aktiv, wird beim Einf\u00fcgen eines Snippets automatisch die Anrede davor und die Signatur danach eingef\u00fcgt. Gilt nicht wenn das Snippet selbst die Anrede oder Signatur ist.</p>
-          <div class="sfhl-set-row2" style="margin-top:10px"><label data-i18n="Vorschau">Vorschau</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-preview-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px" data-i18n="Vor dem Einf\u00fcgen Vorschau zeigen und {eingabe:}-Felder abfragen">Vor dem Einf\u00fcgen Vorschau zeigen und {eingabe:}-Felder abfragen</span></div>
         </div>
         <div class="sfhl-set-section">
           <h3 data-i18n="SLA-Alarm">SLA-Alarm</h3>
@@ -1979,7 +1971,6 @@
         </div>
         <div class="sfhl-set-section">
           <h3 data-i18n="Liste">Liste</h3>
-          <div class="sfhl-set-row2"><label data-i18n="Farb-Legende">Farb-Legende</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-legend-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Legende der aktiven Markierungen \u00fcber der Case-Liste</span></div>
           <div class="sfhl-set-row2"><label data-i18n="Regel aus Auswahl">Regel aus Auswahl</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-selrule-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Listentext markieren \u2192 Schaltfl\u00e4che \u201eRegel aus Auswahl"</span></div>
         </div>
         <div class="sfhl-set-section">
@@ -2203,11 +2194,9 @@
   const wrapCb      = $('.sfhl-wrap-enabled');
   const wrapAnrSel  = $('.sfhl-wrap-anrede');
   const wrapSigSel  = $('.sfhl-wrap-sig');
-  const previewCb   = $('.sfhl-preview-enabled');
   const slaBlinkCb  = $('.sfhl-sla-blink');
   const slaSoundCb  = $('.sfhl-sla-sound');
   const slaNotifyCb = $('.sfhl-sla-notify');
-  const legendCb    = $('.sfhl-legend-enabled');
   const selRuleCb   = $('.sfhl-selrule-enabled');
   const dokuCb      = $('.sfhl-doku-enabled');
   const dokuCountEl = $('.sfhl-doku-count');
@@ -2218,11 +2207,9 @@
   setUname.value = loadUname();
   setLang.value = loadDefaultLang();
   wrapCb.checked = loadWrapOn();
-  previewCb.checked = loadPreviewOn();
   slaBlinkCb.checked = loadSla('blink');
   slaSoundCb.checked = loadSla('sound');
   slaNotifyCb.checked = loadSla('notify');
-  legendCb.checked = loadLegendOn();
   selRuleCb.checked = loadSelRuleOn();
   dokuCb.checked = loadDokuOn();
   function updateDokuCount() { if (dokuCountEl) dokuCountEl.textContent = String(loadDokuLinks().length); }
@@ -3357,7 +3344,6 @@
     toast('Default language: ' + (setLang.value==='en'?'English':'Deutsch'), 'info');
   };
   wrapCb.onchange = () => { saveWrapOn(wrapCb.checked); toast(wrapCb.checked ? 'Auto-Wrap an' : 'Auto-Wrap aus', 'info'); };
-  previewCb.onchange = () => { savePreviewOn(previewCb.checked); toast(previewCb.checked ? 'Vorschau an' : 'Vorschau aus', 'info'); };
   slaBlinkCb.onchange = () => { saveSla('blink', slaBlinkCb.checked); toast(slaBlinkCb.checked ? 'Tab-Blinken an' : 'Tab-Blinken aus', 'info'); };
   slaSoundCb.onchange = () => { saveSla('sound', slaSoundCb.checked); if(slaSoundCb.checked){try{playBeep();}catch{}} toast(slaSoundCb.checked ? 'Alarm-Ton an' : 'Alarm-Ton aus', 'info'); };
   slaNotifyCb.onchange = () => {
@@ -3370,7 +3356,6 @@
     }
     saveSla('notify', slaNotifyCb.checked); toast(slaNotifyCb.checked ? 'Benachrichtigung an' : 'Benachrichtigung aus', 'info');
   };
-  legendCb.onchange = () => { saveLegendOn(legendCb.checked); if(legendCb.checked){ if(isCaseListPage())highlightRows(false); } else removeLegend(); toast(legendCb.checked ? 'Farb-Legende an' : 'Farb-Legende aus', 'info'); };
   selRuleCb.onchange = () => { saveSelRuleOn(selRuleCb.checked); if(!selRuleCb.checked)hideSelButton(); toast(selRuleCb.checked ? 'Regel aus Auswahl an' : 'Regel aus Auswahl aus', 'info'); };
   wrapAnrSel.onchange = () => saveWrapAnrede(wrapAnrSel.value);
   wrapSigSel.onchange = () => saveWrapSignatur(wrapSigSel.value);
@@ -3475,80 +3460,7 @@
       if (sigBody) fullBody = fullBody + '<br><br>' + sigBody;
     }
 
-    // Feature 2 (v4.4.0): optionale Vorschau vor dem Einfügen + gebündelte {eingabe:}-Felder.
-    // Wenn aktiv, zeigt ein Dialog die aufgelöste Vorschau und sammelt alle {eingabe:}-Felder
-    // gebündelt; bei Bestätigung werden die Werte vorab eingesetzt (kein Doppel-Prompt im Resolver).
-    if (loadPreviewOn()) {
-      const _labels = [];
-      fullBody.replace(/\{eingabe:([^}]+)\}/gi, (_, l) => { l = l.trim(); if (l && !_labels.includes(l)) _labels.push(l); return ''; });
-      showInsertDialog(fullBody, _labels, (substitutedBody, ok) => {
-        if (!ok) { closeDropdown(); return; }
-        finishInsert(el, triggerInfo, snippet, substitutedBody);
-      });
-      return;
-    }
     finishInsert(el, triggerInfo, snippet, fullBody);
-  }
-
-  // Feature 2 (v4.4.0): {eingabe:LABEL} → Wert aus map einsetzen (gebündelt, gleiche Labels teilen Wert)
-  function substituteEingabe(body, values) {
-    return body.replace(/\{eingabe:([^}]+)\}/gi, (m, l) => {
-      const v = values[l.trim()];
-      return v != null ? v : m;
-    });
-  }
-
-  // Feature 2 (v4.4.0): Vorschau-/Eingabe-Dialog. cb(substitutedBody, confirmed)
-  function showInsertDialog(fullBody, labels, cb) {
-    let done = false;
-    const finish = (ok, vals) => {
-      if (done) return; done = true;
-      try { document.removeEventListener('keydown', onKey, true); } catch {}
-      ovl.remove();
-      cb(ok ? substituteEingabe(fullBody, vals || {}) : null, ok);
-    };
-    const ovl = document.createElement('div');
-    ovl.className = 'sfhl-ovl';
-    const fieldsHtml = labels.map((l, i) =>
-      `<div class="sfhl-dlg-fld"><label>${escH(l)}</label><input type="text" data-sfhl-eingabe="${i}" placeholder="${escH(l)}"></div>`
-    ).join('');
-    ovl.innerHTML =
-      `<div class="sfhl-dlg" role="dialog" aria-modal="true">
-        <div class="sfhl-dlg-h">📋 ${t('Vorschau vor dem Einfügen')}</div>
-        <div class="sfhl-dlg-b">
-          ${fieldsHtml}
-          <div class="sfhl-dlg-pv-l">${t('Vorschau')}</div>
-          <div class="sfhl-dlg-pv" data-sfhl-pv></div>
-        </div>
-        <div class="sfhl-dlg-f">
-          <button class="sfhl-dlg-btn sfhl-dlg-btn--s" data-sfhl-cancel>${t('Abbrechen')}</button>
-          <button class="sfhl-dlg-btn sfhl-dlg-btn--p" data-sfhl-ok>${t('Einfügen')}</button>
-        </div>
-      </div>`;
-    document.documentElement.appendChild(ovl);
-
-    const inputs = Array.from(ovl.querySelectorAll('[data-sfhl-eingabe]'));
-    const pvEl = ovl.querySelector('[data-sfhl-pv]');
-    const collect = () => { const v = {}; inputs.forEach((inp, i) => { v[labels[i]] = inp.value; }); return v; };
-    const updatePreview = () => {
-      const substituted = substituteEingabe(fullBody, collect());
-      const resolved = resolvePlaceholders(substituted); // ohne meta → keine Doppel-Sammlung
-      let html = resolveLinks(resolved, true);
-      html = sanitizeHtml(html.replace(/\n/g, '<br>')).replace('{|}', '');
-      pvEl.innerHTML = html;
-    };
-    inputs.forEach(inp => inp.addEventListener('input', updatePreview));
-    updatePreview();
-
-    ovl.querySelector('[data-sfhl-ok]').onclick = () => finish(true, collect());
-    ovl.querySelector('[data-sfhl-cancel]').onclick = () => finish(false);
-    ovl.addEventListener('mousedown', e => { if (e.target === ovl) finish(false); });
-    const onKey = e => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
-      else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); finish(true, collect()); }
-    };
-    document.addEventListener('keydown', onKey, true);
-    if (inputs.length) inputs[0].focus();
   }
 
   function finishInsert(el, triggerInfo, snippet, fullBody) {
@@ -4214,27 +4126,7 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   function updateHighlightCount() { const n=document.querySelectorAll('.tm-sfhl-mark').length;const c=triggerBtn.querySelector('.sfhl-count');if(c)c.textContent=n>0?`${n} markiert`:''; }
   // innerText wird bevorzugt: SF Locker Service patcht es für Synthetic-Shadow-Traversal.
   // textContent als Fallback für Umgebungen ohne innerText (z.B. SVG-Knoten).
-  function highlightRows(full=false) { const rows=getRows();if(rows.length===0)return false;for(const row of rows){if(full)unmarkRow(row);const cells=row.querySelectorAll('td');let txt='';for(const c of cells)txt+=' '+(c.innerText||c.textContent||'');const m=bestMatch(txt);if(m)markRow(row,m);else if(full)unmarkRow(row);}updateHighlightCount();ensureLegend(rows);return true; }
-
-  // ===== v4.5.0 #2: Farb-Legende über der Case-Liste =====
-  function removeLegend(){ const l=document.querySelector('.sfhl-legend'); if(l)l.remove(); }
-  function ensureLegend(rows){
-    if(!isCaseListPage()||!loadLegendOn()){ removeLegend(); return; }
-    rows = rows && rows.length ? rows : getRows();
-    const table = rows.length ? rows[0].closest('table') : null;
-    if(!table||!table.parentElement){ removeLegend(); return; }
-    const hits = computeRuleHits();
-    const items = hits ? RULES.filter(r=>r.enabled&&r.term&&hits.get(r.id)>0) : [];
-    let leg = document.querySelector('.sfhl-legend');
-    if(!items.length){ if(leg)leg.remove(); return; }
-    if(!leg){ leg=document.createElement('div'); leg.className='sfhl-legend'; }
-    if(table.previousElementSibling!==leg) table.parentElement.insertBefore(leg, table);
-    leg.innerHTML = '<span class="sfhl-legend-ttl">Legende</span>' + items.map(r=>{
-      const term = r.term.length>30 ? r.term.slice(0,29)+'…' : r.term;
-      const bell = r.alarm ? '<span class="sfhl-legend-bell" title="SLA-Alarm aktiv">🔔</span>' : '';
-      return `<span class="sfhl-legend-chip" title="${escH(r.term)}"><span class="sfhl-legend-sw" style="background:${safeColor(r.color)}"></span>${escH(term)}${bell}<b>${hits.get(r.id)}</b></span>`;
-    }).join('');
-  }
+  function highlightRows(full=false) { const rows=getRows();if(rows.length===0)return false;for(const row of rows){if(full)unmarkRow(row);const cells=row.querySelectorAll('td');let txt='';for(const c of cells)txt+=' '+(c.innerText||c.textContent||'');const m=bestMatch(txt);if(m)markRow(row,m);else if(full)unmarkRow(row);}updateHighlightCount();return true; }
 
   // ===== v4.5.0 #3: Regel aus Auswahl  +  v4.6.0: Geräte-Doku-Lookup =====
   let _selBtn=null;
