@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Salesforce List Markierung + Snippets
 // @namespace    https://github.com/tJ-ek0/Tampermonkey-Salesforce-tools
-// @version      4.13.0
+// @version      4.15.0
 // @description  Markiert Case-Listen farblich + Textbausteine mit Trigger, Platzhaltern, Rich-Text. Drag&Drop, Farbpalette, Auto-Refresh. UND/NICHT/Regex-Regeln, Clipboard-Kopie. DOM-basierte Platzhalter.
-// @author       Tobias Jurgan - SIS Endress + Hauser (Deutschland) GmbH+Co.KG
+// @author       Tobias Jurgan
 // @license      MIT
-// @match        https://endress.lightning.force.com/lightning/*
+// @match        https://*.lightning.force.com/lightning/*
 // @grant        none
 // @run-at       document-end
 // @noframes
@@ -19,156 +19,9 @@
   'use strict';
   // Nicht in iframes ausführen (Hauptseite handhabt iframes via doAttachToDoc)
   if (window !== window.top) return;
-  const VERSION = '4.13.0';
+  const VERSION = '4.15.0';
   console.log('[SFHL] v' + VERSION + ' gestartet');
 
-  // Feature 3 (v4.4.0): „Was ist neu" — Stichpunkte pro Version (DE/EN). Wird einmalig nach einem Update angezeigt.
-  const CHANGELOG = {
-    '4.13.0': {
-      de: [
-        'Aufgeräumt fürs Wesentliche: Die „Vorschau vor dem Einfügen" und die Farb-Legende über der Case-Liste wurden entfernt. (Markierungen, Snippets, Auto-Refresh und die Geräte-Doku bleiben unverändert.)',
-      ],
-      en: [
-        'Trimmed to the essentials: the „preview before inserting“ and the color legend above the case list were removed. (Highlights, snippets, auto-refresh and device docs are unchanged.)',
-      ],
-    },
-    '4.12.0': {
-      de: [
-        'Geräte-Doku ist jetzt ein eigener Reiter oben im Panel (neben „Aktualisierung") statt unter den Einstellungen — es ist ja eine eigene Funktion. (Die experimentelle Auto-Markierung wurde wieder entfernt.)',
-        'Der Einstieg sitzt jetzt immer in der Salesforce-Kopfleiste (das Tools-Icon oben rechts). Die Einstellung „Button-Position" ist entfallen; Alt+R öffnet das Panel weiterhin.',
-      ],
-      en: [
-        'Device docs is now its own tab at the top of the panel (next to “Refresh”) instead of under Settings — it is a feature of its own. (The experimental auto-highlight was removed again.)',
-        'The entry point now always sits in the Salesforce header (the tools icon, top right). The “Button position” setting was removed; Alt+R still opens the panel.',
-      ],
-    },
-    '4.10.0': {
-      de: [
-        'Automatische Sicherungen: Vor jedem Import oder Zurücksetzen wird dein vorheriger Stand (Regeln + Snippets) automatisch gesichert — die letzten 3. Unter Einstellungen → Sicherung kannst du sie mit einem Klick wiederherstellen (der aktuelle Stand wird dabei ebenfalls gesichert).',
-      ],
-      en: [
-        'Automatic backups: before every import or reset your previous state (rules + snippets) is saved automatically — the last 3. Under Settings → Backup you can restore them with one click (your current state is saved too).',
-      ],
-    },
-    '4.9.0': {
-      de: [
-        'Snippet-Dropdown: Tippfehlertoleranz. Wenn deine Eingabe sonst nichts findet, zeigt das Dropdown jetzt ähnliche Treffer (z. B. „dku" → „doku") statt leer zu bleiben — markiert mit „≈ ähnliche Treffer".',
-      ],
-      en: [
-        'Snippet dropdown: typo tolerance. When your input would otherwise find nothing, the dropdown now shows similar matches (e.g. “dku” → “doku”) instead of staying empty — flagged with “≈ similar matches”.',
-      ],
-    },
-    '4.8.0': {
-      de: [
-        'Snippet-Dropdown: Die ersten neun Einträge sind nummeriert — mit Alt+1 bis Alt+9 fügst du einen Eintrag direkt ein, ohne erst mit den Pfeiltasten zu navigieren.',
-      ],
-      en: [
-        'Snippet dropdown: the first nine entries are numbered — press Alt+1 to Alt+9 to insert an entry directly, without navigating with the arrow keys.',
-      ],
-    },
-    '4.7.0': {
-      de: [
-        'Geräte-Doku: Link-Vorlagen lassen sich jetzt direkt in den Einstellungen bearbeiten (Einstellungen → Geräte-Doku → „✎ Vorlagen bearbeiten") — Kürzel, Beschriftung, Typ und URL anlegen/ändern/löschen, ohne Datei-Import.',
-      ],
-      en: [
-        'Device docs: link templates can now be edited directly in the settings (Settings → Device docs → “✎ Edit templates”) — create/change/delete key, label, type and URL without importing a file.',
-      ],
-    },
-    '4.6.3': {
-      de: [
-        'Doku-Lookup funktioniert jetzt auch für Codes, die im E-Mail-Editor markiert werden (der läuft in einem iframe und wurde vorher von der Auswahl-Erkennung nicht erfasst).',
-      ],
-      en: [
-        'Doc lookup now also works for codes selected in the email editor (it runs in an iframe and was previously not seen by the selection detection).',
-      ],
-    },
-    '4.6.2': {
-      de: [
-        'Doku-Lookup erkennt mehr Codes: auch in Eingabefeldern markiert, mit Rand-Klammern/unsichtbaren Zeichen, sowie Ordercodes mit „+" (z. B. FMR10B-…+Z1).',
-      ],
-      en: [
-        'Doc lookup detects more codes: also when selected inside input fields, with surrounding brackets/invisible characters, and order codes containing “+” (e.g. FMR10B-…+Z1).',
-      ],
-    },
-    '4.6.1': {
-      de: [
-        'Doku-Lookup: Seriennummern werden jetzt zuverlässig erkannt (vorher teils als Produkt-Root → falsche Links). Das Popup zeigt die erkannte Gruppe zuerst; alle anderen Typen lassen sich über „▸ Andere Typen" aufklappen.',
-      ],
-      en: [
-        'Doc lookup: serial numbers are now detected reliably (previously sometimes treated as product root → wrong links). The popup shows the detected group first; all other types expand via “▸ Other types”.',
-      ],
-    },
-    '4.6.0': {
-      de: [
-        'Neu: Geräte-Doku-Lookup. Gerätecode markieren (Produkt-Root, Seriennummer, Auftrag oder Ordercode) → „📄 Doku-Links" öffnet ein Popup mit passenden Links. Link-Vorlagen werden per Config-Datei importiert (Einstellungen → Geräte-Doku); es sind keine im Skript hinterlegt.',
-      ],
-      en: [
-        'New: device documentation lookup. Select a device code (product root, serial, order or order code) → “📄 Doc links” opens a popup with matching links. Link templates are imported via a config file (Settings → Device docs); none are bundled in the script.',
-      ],
-    },
-    '4.5.3': {
-      de: [
-        'Fix für die Salesforce-Konsole mit mehreren Tabs: Snippets lesen jetzt Kontakt/Betreff/Case-Nr. nur noch aus dem aktiven Tab. Vorher konnte beim Tab-Wechsel der Name aus dem vorherigen Tab eingefügt werden (bis F5).',
-      ],
-      en: [
-        'Fix for the Salesforce console with multiple tabs: snippets now read contact/subject/case no. only from the active tab. Previously, switching tabs could insert the name from the previous tab (until F5).',
-      ],
-    },
-    '4.5.2': {
-      de: [
-        'Platzhalter-Verbesserung: Leere {!…}-Felder schreiben keinen rohen Merge-Code mehr in die Mail, sondern einen lesbaren [Platzhalter] zum manuellen Ausfüllen (z. B. [Seriennr.]).',
-        'Fix: {!Case.Communication_Owner__c} (Techniker) verwechselte „Kommunikationssprache" und fügte teils „Deutsch" ein — behoben.',
-      ],
-      en: [
-        'Placeholder improvement: empty {!…} fields no longer write raw merge code into the email but a readable [placeholder] to fill in manually (e.g. [Serial no.]).',
-        'Fix: {!Case.Communication_Owner__c} (technician) confused “communication language” and sometimes inserted “German” — fixed.',
-      ],
-    },
-    '4.5.1': {
-      de: [
-        'Fix: Die Schalter in den Einstellungen (Vorschau, Ton, Benachrichtigung, Legende u. a.) ließen sich nicht per Klick umschalten — jetzt behoben.',
-      ],
-      en: [
-        'Fix: the settings toggles (preview, sound, notification, legend, etc.) could not be switched by clicking — now fixed.',
-      ],
-    },
-    '4.5.0': {
-      de: [
-        'SLA-Alarm: Regeln können einzeln einen 🔔-Alarm bekommen (Glocke in der Markierungs-Liste). Neuer Treffer beim Auto-Refresh → Tab-Titel blinkt, optional Ton + Desktop-Benachrichtigung.',
-        'Farb-Legende über der Case-Liste: zeigt die aktiven Markierungen mit Trefferzahl.',
-        'Regel aus Auswahl: Listentext markieren → Schaltfläche legt direkt eine Markierungs-Regel an.',
-        'Button-Position wählbar (Einstellungen): SF-Kopfleiste, schwebend oder ausgeblendet (Alt+R bleibt).',
-        'Optik an Salesforce angeglichen (SLDS-Blau, SLDS-Toasts).',
-      ],
-      en: [
-        'SLA alarm: rules can individually get a 🔔 alarm (bell in the highlight list). New match on auto-refresh → tab title blinks, optional sound + desktop notification.',
-        'Color legend above the case list: shows active highlights with hit counts.',
-        'Rule from selection: select list text → a button creates a highlight rule directly.',
-        'Button position is configurable (settings): SF header, floating or hidden (Alt+R stays).',
-        'Look aligned with Salesforce (SLDS blue, SLDS toasts).',
-      ],
-    },
-    '4.4.1': {
-      de: [
-        'Langzeit-Bug behoben: Anrede und Nachname werden jetzt zuverlässig erkannt (z. B. „Guten Tag Frau Abohamzeh,"). Bisher las das Skript wegen Salesforce-Shadow-DOM/Slots den Feldwert nicht und fügte UI-Text wie „50× bearbeiten" ein. Zusätzliches Sicherheitsnetz: lässt sich kein gültiger Name lesen, bleibt das Feld leer (mit Hinweis) statt Müll einzufügen.',
-      ],
-      en: [
-        'Long-standing bug fixed: salutation and last name are now read reliably (e.g. “Hello Mrs Abohamzeh,”). Previously the script failed to read the field value through Salesforce shadow DOM/slots and inserted UI text like “50× edit”. Added safety net: if no valid name can be read, the field stays blank (with a notice) instead of inserting junk.',
-      ],
-    },
-    '4.4.0': {
-      de: [
-        'Sicherheitsnetz: Warn-Hinweis, wenn Anrede, Nachname oder Kontaktname beim Einfügen leer bleiben.',
-        'Optionale Vorschau vor dem Einfügen (in den Einstellungen aktivierbar) — zeigt das fertige Snippet und fragt alle {eingabe:}-Felder gebündelt ab.',
-        'Dieser „Was ist neu"-Hinweis nach einem Update.',
-      ],
-      en: [
-        'Safety net: warning when salutation, last name or contact name resolve empty on insert.',
-        'Optional preview before inserting (enable in settings) — shows the final snippet and asks for all {eingabe:} fields at once.',
-        'This “what’s new” notice after an update.',
-      ],
-    },
-  };
 
   // ===== Storage Keys =====
   const LS_CFG      = 'sfhl_config_v4';
@@ -181,19 +34,25 @@
   const LS_UNAME    = 'sfhl_snip_username';
   const LS_FOLDERS  = 'sfhl_rule_folders_v1';
   const LS_SNIP_VER  = 'sfhl_snip_defaults_ver';
-  const LS_RECENT    = 'sfhl_recent_v1';       // zuletzt verwendete Snippet-IDs
   const LS_DATA_VER  = 'sfhl_data_version';    // Migrations-Version
   const LS_WRAP_ON   = 'sfhl_wrap_enabled';    // Auto-Wrap an/aus
   const LS_WRAP_ANR  = 'sfhl_wrap_anrede';     // Trigger des Anrede-Snippets
   const LS_WRAP_SIG  = 'sfhl_wrap_signatur';   // Trigger des Signatur-Snippets
   const LS_DEF_LANG  = 'sfhl_default_language'; // 'de' oder 'en'
-  const LS_LAST_EXPORT = 'sfhl_last_export';    // Timestamp des letzten Exports (Backup-Reminder)
-  const LS_BACKUP_HINT = 'sfhl_backup_hint_at'; // Timestamp des letzten Backup-Hinweises
-  const LS_BACKUPS = 'sfhl_backups_v1';         // rotierende Auto-Backups (max 3) vor Import/Reset
-  const LS_LAST_VER    = 'sfhl_last_seen_version'; // Feature 3 (v4.4.0): zuletzt gesehene Version für „Was ist neu"
 
   // ===== Helpers =====
   function uid() { return 'k' + Math.random().toString(36).slice(2, 10); }
+  // FIX v4.6.4: localStorage-Schreibfehler (Quota) nicht mehr stumm schlucken —
+  // Nutzer verliert sonst Daten ohne es zu merken. toast() existiert erst später,
+  // daher try/catch um den Aufruf.
+  function lsSet(key, val) {
+    try { localStorage.setItem(key, val); return true; }
+    catch (e) {
+      console.warn('[SFHL] localStorage-Schreibfehler (' + key + '):', e);
+      try { toast('Speichern fehlgeschlagen — localStorage voll? Bitte exportieren!', 'error', 8000); } catch {}
+      return false;
+    }
+  }
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
   function norm(s) { return (s || '').toString().toLowerCase(); }
   function escH(s) { return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
@@ -213,6 +72,9 @@
   // Skript-Version voraus. Bei neuen Migrationen oder neuen Default-Snippets HIER erhöhen
   // (muss semver-größer als der gespeicherte Wert sein), NICHT an @version koppeln.
   const DATA_VERSION = '4.9.0';
+
+  // v4.14.0: Backup-Reminder entfernt — verwaiste Keys aus Alt-Installationen löschen
+  try { localStorage.removeItem('sfhl_last_export'); localStorage.removeItem('sfhl_backup_hint_at'); } catch {}
 
   const PREFIXES = [';;', '//', '::', '!!', '@@'];
 
@@ -275,9 +137,10 @@
 
   // ===== Color Presets =====
   const COLOR_PRESETS = [
-    { hex:'#E6FFE6', name:'Gr\u00fcn' },{ hex:'#FFCCCC', name:'Rot' },{ hex:'#FFFFCC', name:'Gelb' },
-    { hex:'#FFE5CC', name:'Orange' },{ hex:'#E6F0FF', name:'Blau' },{ hex:'#F0E6FF', name:'Lila' },
-    { hex:'#E6FFFA', name:'T\u00fcrkis' },{ hex:'#FFE6F0', name:'Pink' },{ hex:'#FFF5E6', name:'Pfirsich' },{ hex:'#F0F0F0', name:'Grau' },
+    { hex:'#E6FFE6', name:'Gr\u00fcn' },    { hex:'#FFCCCC', name:'Rot' },     { hex:'#FFFFCC', name:'Gelb' },    { hex:'#FFE5CC', name:'Orange' },  { hex:'#E6F0FF', name:'Blau' },
+    { hex:'#D6F5D6', name:'Gr\u00fcn+' },   { hex:'#FFB3B3', name:'Rot+' },    { hex:'#FFF0A0', name:'Gelb+' },   { hex:'#FFD0A0', name:'Orange+' }, { hex:'#CCE0FF', name:'Blau+' },
+    { hex:'#F0E6FF', name:'Lila' },    { hex:'#E6FFFA', name:'T\u00fcrkis' },  { hex:'#FFE6F0', name:'Pink' },    { hex:'#FFF5E6', name:'Pfirsich' },{ hex:'#F0F0F0', name:'Grau' },
+    { hex:'#E0CCFF', name:'Lila+' },   { hex:'#CCF5EE', name:'Mint' },    { hex:'#F5CCDF', name:'Rose' },    { hex:'#E8F5D0', name:'Limette' }, { hex:'#D8D8D8', name:'Grau+' },
   ];
 
   // ===== Config: Rules =====
@@ -297,57 +160,29 @@
     } catch {}
     return RULE_DEFAULTS.map(e => ({ ...e, id: uid(), folder: null }));
   }
-  function saveRules() { localStorage.setItem(LS_CFG, JSON.stringify(RULES)); }
+  function saveRules() { lsSet(LS_CFG, JSON.stringify(RULES)); }
 
   // ===== Config: Snippets =====
   const SNIP_DEFAULTS = [
     { id:uid(), trigger:"anrede", label:"Anrede DE", body:'Guten Tag {!Contact.Salutation} {!Contact.LastName},', richText:true, category:"Standard", favorite:false },
     { id:uid(), trigger:"anredeen", label:"Anrede EN", body:'Dear {!Contact.Salutation} {!Contact.LastName},', richText:true, category:"Standard", favorite:false },
-    { id:uid(), trigger:"sig", label:"Signatur DE", body:'Freundliche Grüße<br><br>{name}<br><br>Produkt- und Anwendungsspezialist<br><br>Technischer Support | Endress+Hauser Deutschland<br><br>Endress+Hauser (Deutschland) GmbH+Co. KG<br>Colmarer Str. 6 | 79576 Weil am Rhein<br>Phone: +49 7621 975 11575 | 0800-3443573<br>mytechsupport.de@endress.com<br><a href="https://www.de.endress.com/technischer-support">https://www.de.endress.com/technischer-support</a>', richText:true, category:"Standard", favorite:false },
-    { id:uid(), trigger:"abfkontakt", label:"DE-AbfrageKontaktdaten", body:'um Sie bei Ihrem Anliegen unterstützen zu können, lassen Sie uns bitte noch Ihre vollständigen Kontaktdaten, einschließlich Ihres (Firmen-)Standorts an dem Sie sich befinden und des Hauptsitzes des Unternehmens für das Sie tätig sind, zukommen.<br><br>Sobald uns diese Daten vorliegen können wir Ihr Anliegen weiter bearbeiten.<br><br>Vielen Dank vorab für Ihre Unterstützung.', richText:true, category:"Kontaktdaten", favorite:false },
-    { id:uid(), trigger:"abfkontakten", label:"DE-AbfrageKontaktdaten EN", body:'in order to assist you, can you please provide your full contact data including where you are located and the company\'s headquarters?<br><br>As soon as we have this data, we can process your request further.<br><br>Thank you in advance', richText:true, category:"Kontaktdaten", favorite:false },
-    { id:uid(), trigger:"abfkportal", label:"DE-AbfrageKontaktdatenPortal", body:'um unser Service Portal nutzen zu können, lassen Sie uns bitte noch Ihre vollständigen Kontaktdaten, einschließlich Ihres (Firmen-)Standorts an dem Sie sich befinden und dem Hauptsitz des Unternehmens für das Sie tätig sind, zukommen.<br><br>Sobald uns diese Daten vorliegen können wir Ihren Account vervollständigen und freischalten.<br><br>Vielen Dank vorab für Ihre Unterstützung.', richText:true, category:"Kontaktdaten", favorite:false },
-    { id:uid(), trigger:"abfkportalmm", label:"DE-AbfrageKontaktdatenPortal MehrereMailAdressen", body:'aktuell haben wir Sie mit zwei unterschiedlichen E-Mail-Adressen bei uns im System hinterlegt. Um unser Service Portal nutzen zu können, nennen Sie uns bitte Ihre primäre E-Mail-Adresse sowie Ihre vollständigen und aktuellen Kontaktdaten, einschließlich Ihres (Firmen-) Standorts an dem Sie sich befinden und den Hauptsitz des Unternehmens für das Sie tätig sind.<br><br>Sobald uns diese Daten vorliegen können wir Ihren Account vervollständigen und freischalten.<br><br>Vielen Dank vorab für Ihre Unterstützung.', richText:true, category:"Kontaktdaten", favorite:false },
-    { id:uid(), trigger:"vsbericht", label:"DE-Bericht visueller Support", body:'anbei erhalten Sie den Inbetriebnahmebericht/Tätigkeitsbericht zur SightCall Visual Support Inbetriebnahme.<br><br>Sollten Sie zu dieser Inbetriebnahme Rückfragen haben, stehen wir Ihnen gerne zur Verfügung. Antworten Sie dazu bitte direkt auf diese E-Mail.<br><br>Bei telefonischen Rückfragen beziehen Sie sich bitte auf die Vorgangsnummer {!Case.CaseNumber}.', richText:true, category:"Service", favorite:false },
-    { id:uid(), trigger:"fieldcare", label:"DE-FieldCare Abfrage", body:'Um die Problematik mit der Installation von FieldCare lösen zu können, benötigen wir weitere Informationen von Ihnen.<br><br>Welches Betriebssystem kommt zum Einsatz?<br>Ist dies eine 64 oder 32-Bit Version?<br>Welche Version von FieldCare soll installiert werden?<br>Soll eine vorhandene FieldCare Version upgedatet werden?<br>Wenn ja, welche Version war davor installiert?<br>Haben Sie die Installationsdateien vom Internet geladen oder haben Sie einen Datenträger vorliegen?<br>Haben Sie vollwertige (lokale) Administratorrechte an Ihrem PC?<br><br>Bei der Installation werden Log-Dateien erzeugt. Bitte kopieren Sie alle Dateien aus:<br><br>FieldCare &lt; 2.11: C:\\Programme (x86)\\Microsoft SQL Server\\100\\Setup Bootstrap\\Log<br>FieldCare 2.11: C:\\Programme (x86)\\Microsoft SQL Server\\120\\Setup Bootstrap\\Log + C:\\Programme (x86)\\Endress+Hauser\\FIM<br><br>Komprimieren Sie das Verzeichnis als ZIP und senden Sie es uns per E-Mail zu (max. 7 MB).', richText:true, category:"Support", favorite:false },
-    { id:uid(), trigger:"remote", label:"DE-Freigabe Remotezugriff", body:'Sie haben fachliche Unterstützung durch Endress+Hauser angefordert. Der Support soll durch eine Remote-Verbindung zu Ihrem PC/System geleistet werden.<br><br>Sie sind damit einverstanden, für die technische Unterstützung Fernzugriff zu gewähren. Für Schäden durch den Remote-Zugriff haftet Endress+Hauser nur bei vorsätzlichem oder grob fahrlässigem Handeln.<br><br>Bitte senden Sie die ausgefüllte Einverständniserklärung zurück:<br><br>Geräteseriennummer:<br>Bestellcode:<br>Zugangsart:<br>Zugangsdaten:<br>Kurze Tätigkeitsbeschreibung:<br><br>Ich bin damit einverstanden, dem Endress+Hauser Techniker Fernzugriff zu meinem PC/System zu gewähren.<br><br>Ort:<br>Datum:<br>Unterschrift:', richText:true, category:"Support", favorite:false },
-    { id:uid(), trigger:"fussnote", label:"DE-Fussnote Inbetriebnahme", body:'Für zusätzlichen Support bei der Inbetriebnahme des Geräts stehen Ihnen verschiedene Optionen zur Verfügung. Dieser Service kann im Rahmen eines Supportvertrags oder einmalig über eine Inbetriebnahme-Pauschale in Anspruch genommen werden.<br><br>Informationen zu unseren Supportverträgen: <a href="https://www.de.endress.com/smart-support">https://www.de.endress.com/smart-support</a>', richText:true, category:"Service", favorite:false },
-    { id:uid(), trigger:"infos", label:"DE-Informationen nachreichen", body:'zu Ihrer Anfrage benötigen wir zusätzliche Informationen um Ihnen gezielter helfen zu können:<br><br>- Gerätetype / Seriennummer und ggf. Bestellcode (Typenschild am Gerät oder Lieferunterlagen)<br>- Einbauort/-position bzw. Montageart / verwendete Armatur<br>- Welches Medium wird gemessen (inkl. Temperatur, Druck, Durchfluss, pH-Wert, Leitfähigkeit, Viskosität)<br>- Betriebssystem ggf. inkl. Version / Update-Stand<br>- Programmversion / Firmwareversion<br>- Fehlermeldung bzw. Fehlercode<br><br>Lassen Sie uns gerne auch Bilder / Screenshots zukommen.', richText:true, category:"Support", favorite:false },
-    { id:uid(), trigger:"kdaten", label:"DE-Kontaktdaten", body:'anbei erhalten Sie die Kontaktdaten zur Anfrage mit der Vorgangsnummer: {!Case.CaseNumber}<br><br>Bei Rückfragen antworten Sie bitte direkt auf diese E-Mail oder nutzen Sie unser Service Portal: <a href="https://www.services.endress.com/?language=de">https://www.services.endress.com/?language=de</a>', richText:true, category:"Kontaktdaten", favorite:false },
-    { id:uid(), trigger:"kvertrieb", label:"DE-Kontaktdaten Vertrieb", body:'zu Ihrer Anfrage erhalten Sie direkt von Ihrem Ansprechpartner unseres Vertriebsteams ein Angebot bzw. weitere Informationen. Sie werden persönlich betreut von {!Account.Internal_Sales_Engineer__c}. Unser Vertriebsteam erreichen Sie unter der kostenlosen Rufnummer 0800 3483787.<br><br>Die Anfrage an den technischen Support (Vorgang {!Case.CaseNumber}) sehen wir daher aus technischer Sicht als gelöst an.<br><br>Bei Rückfragen zum Angebot können Sie sich gerne direkt an den oben genannten Ansprechpartner wenden.', richText:true, category:"Intern", favorite:false },
-    { id:uid(), trigger:"ksgc", label:"DE-Kontaktdaten SGC (Serviceeinsatz)", body:'unsere Einsatzplanung kommt bezüglich der Terminabstimmung eines Serviceeinsatzes vor Ort auf Sie zu. Bei Rückfragen oder Änderungswünschen erreichen Sie das Team direkt unter +49 (0)7621 975-19191. Bitte beziehen Sie sich hier auf den Arbeitsauftrag {!Case.Work_Order__c}.<br><br>Die Anfrage an den technischen Support (Vorgang {!Case.CaseNumber}) würden wir daher aus technischer Sicht als gelöst ansehen.', richText:true, category:"Intern", favorite:false },
-    { id:uid(), trigger:"ksiz", label:"DE-Kontaktdaten SIZ (Serviceeinsatz)", body:'unsere Einsatzplanung kommt bezüglich der Terminabstimmung eines Serviceeinsatzes vor Ort auf Sie zu. Bei Rückfragen oder Änderungswünschen erreichen Sie das Team direkt unter +49 (0)7621 975-11666. Bitte beziehen Sie sich hier auf den Arbeitsauftrag {!Case.Work_Order__c}.<br><br>Die Anfrage an den technischen Support (Vorgang {!Case.CaseNumber}) würden wir daher aus technischer Sicht als gelöst ansehen.', richText:true, category:"Intern", favorite:false },
-    { id:uid(), trigger:"kportalweb", label:"DE-Kundenportal (Webformular)", body:'Sie haben über unsere Webseite einen Kundenvorgang in unserem System eröffnet.<br><br>Damit wir Ihre Anfrage bearbeiten können, benötigen wir noch:<br><br>Telefonnummer:<br>Firmensitz:<br><br>Vielen Dank', richText:true, category:"Kontaktdaten", favorite:false },
-    { id:uid(), trigger:"offen", label:"DE-Offene R\u00fcckmeldung", body:'da bisher keine Rückmeldung auf unser Gespräch / die E-Mail vom {datum} erfolgte, gehe ich davon aus, dass die Anfrage "{!Case.Subject}" ({!Case.CaseNumber}) als "gelöst" angesehen werden kann. Diese wird dann automatisch in einigen Tagen geschlossen.<br><br>Sollten Sie noch Fragen offen haben, melden Sie sich bitte per E-Mail an mytechsupport.de@endress.com, per Kontaktformular (<a href="https://www.de.endress.com/technischer-support)">https://www.de.endress.com/technischer-support)</a> oder per Telefon 07621 975 11575. Bei telefonischen Rückfragen beziehen Sie sich bitte auf die Vorgangsnummer {!Case.CaseNumber}.', richText:true, category:"Abschluss", favorite:false },
-    { id:uid(), trigger:"portalfrei", label:"DE-Portalfreischaltung", body:'in Zusammenhang mit Ihrer Anfrage zu "{!Case.Subject}" ({!Case.CaseNumber}) haben wir Sie in unserem kostenlosen Serviceportal freigeschaltet.<br><br>Die Zugangsinformationen erhalten Sie in einer separaten E-Mail.<br><br>Mit unserem Dienstleistungspaket Smart Support profitieren Sie zusätzlich von einer zugesicherten Reaktionszeit und werden durch unsere Experten via Remote-Support bei Inbetriebnahmen und Fehlerbehebung unterstützt.<br><br>Weiter Informationen: <a href="https://www.de.endress.com/smart-support">https://www.de.endress.com/smart-support</a>', richText:true, category:"Portal", favorite:false },
-    { id:uid(), trigger:"rueckruf", label:"DE-R\u00fcckruf", body:'wir konnten Sie telefonisch unter der Rufnummer {!Contact.PhoneFormula__c} / {!Contact.MobilePhone} nicht persönlich zum Vorgang {!Case.CaseNumber} zu "{!Case.Subject}" erreichen.<br><br>Bitte rufen Sie uns unter der Telefonnummer +49 7621 975 11575 oder 0800-3443573 zurück.<br><br>Gerne können Sie uns Ihr Anliegen auch per E-Mail näher beschreiben. Noch besser, nutzen Sie unser Service Portal: <a href="https://www.services.endress.com/?language=de">https://www.services.endress.com/?language=de</a>', richText:true, category:"Kontaktdaten", favorite:false },
-    { id:uid(), trigger:"repair", label:"DE-R\u00fccksendung Reparatur", body:'unser Ziel ist es, Ihnen mit einer fachgerechten und sicheren Abwicklung möglichst kurze Durchlaufzeiten zu bieten.<br><br>Unter der Adresse <a href="https://www.de.endress.com/ruecksendung">https://www.de.endress.com/ruecksendung</a> finden Sie die "Dekontaminationserklärung", welche Sie bitte ausgefüllt und unterschrieben gut sichtbar außen an der Verpackung anbringen. Wir können mit der Reparatur erst nach Vorlage dieser Erklärung beginnen.<br><br>Notieren Sie bitte auf dem Formular die Vorgangsnummer {!Case.CaseNumber} sowie kurz das Fehlerbild.<br><br>Bitte senden Sie das Produkt an:<br>Endress+Hauser (Deutschland) GmbH+Co. KG<br>Kalibrier- und Service Center D-A-CH<br>Colmarer Straße 6 | D-79576 Weil am Rhein<br><br>Rückfragen: 0800 - 34737247 | repair.de@endress.com', richText:true, category:"Service", favorite:false },
-    { id:uid(), trigger:"repairgm", label:"DE-R\u00fccksendung Reparatur GM", body:'unser Ziel ist es, Ihnen mit einer fachgerechten und sicheren Abwicklung möglichst kurze Durchlaufzeiten zu bieten. Unter der Adresse <a href="https://www.de.endress.com/ruecksendung">https://www.de.endress.com/ruecksendung</a> finden Sie die "Unbedenklichkeitserklärung Gas Measurement", welche Sie bitte ausgefüllt und unterschrieben gut sichtbar außen an der Verpackung anbringen.<br><br>Rückfragen zu Reparaturen:<br>Tel. +49 7621 975 19 195<br>E-Mail: repair-gasmeasurement.de@endress.com', richText:true, category:"Service", favorite:false },
-    { id:uid(), trigger:"slsbericht", label:"DE-SLS Bericht", body:'Tätigkeitsbericht<br>Auftragsnr. {!Case.CaseNumber}<br>Techniker {!Case.Communication_Owner__c}<br><br>Auftraggeber<br>Kundennr. {!Account.SAPAccountID__c}<br>Kunde {!Account.FTXTAccountName__c}<br>Strasse {!Account.Street__c}<br>Ort {!Account.City__c}<br>Kontaktperson {!Contact.Name}<br>Telefon {!Contact.PhoneFormula__c}<br><br>Kurzbeschreibung {!Case.Subject}<br><br>Lösungstext: {!Case.Solution_Steps__c}<br>Gelöst am: {datum}', richText:true, category:"Intern", favorite:false },
-    { id:uid(), trigger:"dtmlib", label:"DE-SLS DTM Library + Installation log", body:'bei der Installation der aktuellen Geräte-DTMs ist in Ihrem System ein Problem aufgetreten.<br><br>Während der Installation werden im Verzeichnis %Temp% Logdateien angelegt. Bitte senden Sie uns diese per E-Mail zu (als ZIP, max. 7 MB).<br><br>Öffnen Sie den Windows-Explorer, geben Sie %Temp% in die Adresszeile ein, suchen Sie alle Dateien mit "DTM" im Namen, kopieren Sie diese in einen neuen Ordner und komprimieren Sie diesen.', richText:true, category:"Support", favorite:false },
-    { id:uid(), trigger:"smartinfo", label:"DE-SmartSupportInfo", body:'wie vereinbart haben wir Sie in unserem Kundenportal freigeschaltet. Die Zugangsinformationen haben Sie in einer separaten E-Mail erhalten.<br><br>Mit unserem Dienstleistungspaket Smart Support können Sie sich zusätzlich eine noch schnellere Reaktionszeit sichern und werden durch unsere Experten via Remote-Support bei Inbetriebnahmen und Fehlerbehebungen unterstützt.<br><br>Weiter Informationen: <a href="https://www.de.endress.com/smart-support">https://www.de.endress.com/smart-support</a>', richText:true, category:"Portal", favorite:false },
-    { id:uid(), trigger:"startupber", label:"DE-Start-Up Bericht", body:'anbei erhalten Sie den Inbetriebnahmebericht der Smart Start-Up Remote Inbetriebnahme. Alle relevanten Einstellungen sind dort dokumentiert.<br><br>Sollten Sie zu dieser Inbetriebnahme noch Rückfragen haben können Sie sich gerne bei uns melden. Antworten Sie dazu bitte direkt auf diese E-Mail.', richText:true, category:"Service", favorite:false },
-    { id:uid(), trigger:"startupterm", label:"DE-Start-Up Termin", body:'Sie haben sich bezüglich Ihrer Smart Start-Up Remote Inbetriebnahme bei uns gemeldet.<br><br>Für die Inbetriebnahme haben wir einen Produkt- und Anwendungsspezialisten am [DATUM EINTRAGEN] zwischen [UHRZEIT VON BIS EINTRAGEN] Uhr reserviert.<br><br>Damit die Inbetriebnahme reibungslos durchgeführt werden kann benötigen wir noch einige wichtige Informationen zu Ihrer Messstelle. Dazu haben wir eine individuelle Checkliste angehängt.<br><br>Bitte senden Sie uns die ausgefüllte Checkliste bis spätestens zwei Tage vor dem geplanten Termin zurück.', richText:true, category:"Service", favorite:false },
-    { id:uid(), trigger:"survey", label:"DE-Survey Smart Start-Up", body:'vielen Dank für Ihre Teilnahme an unserer Umfrage zum Technischen Support.<br><br>Sie interessieren sich für technischen Support via App mit Live-Videoübertragung. Mit dem Smart Start-Up bieten wir Ihnen genau diese Möglichkeit an.<br><br>Haben wir Ihr Interesse geweckt? <a href="https://www.de.endress.com/de/dienstleistungsportfolio/Inbetriebnahme/StartUp">https://www.de.endress.com/de/dienstleistungsportfolio/Inbetriebnahme/StartUp</a>', richText:true, category:"Portal", favorite:false },
-    { id:uid(), trigger:"wissen", label:"DE-Wissensartikel", body:'anbei übersenden wir Ihnen einen Lösungsvorschlag zu Ihrer Anfrage:<br><br>!HIER WISSENSARTIKEL EINFÜGEN!<br><br>Sollte der Lösungsvorschlag nicht den gewünschten Erfolg erzielen, stehen wir für weitere Fragen zum Vorgang {!Case.CaseNumber} gerne zur Verfügung.', richText:true, category:"Support", favorite:false },
-    { id:uid(), trigger:"wissenen", label:"DE-Wissensartikel EN", body:'we hereby send you a proposal for a solution to your request:<br><br>!INSERT KNOWLEDGE ARTICLE HERE!<br><br>If the proposed solution does not achieve the desired success, we are glad to answer any further questions about the support-Case {!Case.CaseNumber}.', richText:true, category:"Support", favorite:false },
-    { id:uid(), trigger:"doku", label:"DE-Dokumentation Seriennummer", body:'hier, wie gewünscht, die Geräte-Dokumentation.<br><br>Link zu Informationen für Seriennummer {!Case.Serial_number__c}: <a href="https://portal.endress.com/webapp/DeviceViewer/?cc=0007&amp;lang=de&amp;serialNumber=">https://portal.endress.com/webapp/DeviceViewer/?cc=0007&amp;lang=de&amp;serialNumber=</a>{!Case.Serial_number__c}', richText:true, category:"Support", favorite:false },
+    { id:uid(), trigger:"sig", label:"Signatur DE", body:'Freundliche Grüße<br><br>{name}', richText:true, category:"Standard", favorite:false },
   ];
   function loadSnippets() {
     try {
       const raw = localStorage.getItem(LS_SNIP);
-      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.map(e => ({ id:e.id||uid(), trigger:String(e.trigger||''), label:String(e.label||''), body:String(e.body||''), bodyEn:String(e.bodyEn||''), richText:true, category:String(e.category||''), favorite:!!e.favorite, usageCount:Number(e.usageCount)||0 })); }
+      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.map(e => ({ id:e.id||uid(), trigger:String(e.trigger||''), label:String(e.label||''), body:String(e.body||''), bodyEn:String(e.bodyEn||''), richText:true, category:String(e.category||''), favorite:!!e.favorite })); }
     } catch {}
     return SNIP_DEFAULTS.map(e => ({ ...e, id: uid() }));
   }
   // FIX #10: Dirty-Flag-Saves — verhindert mehrfache requestIdleCallback-Registrierung
   let _snipDirty = false, _snipFlushScheduled = false, _rulesDirty = false;
   function saveSnippets(immediate=false) {
-    if (immediate) { localStorage.setItem(LS_SNIP, JSON.stringify(SNIPPETS)); _snipDirty=false; _snipFlushScheduled=false; return; }
+    if (immediate) { lsSet(LS_SNIP, JSON.stringify(SNIPPETS)); _snipDirty=false; _snipFlushScheduled=false; return; }
     _snipDirty = true;
     if (_snipFlushScheduled) return;
     _snipFlushScheduled = true;
-    const flush = () => { if (_snipDirty) { localStorage.setItem(LS_SNIP, JSON.stringify(SNIPPETS)); _snipDirty=false; } _snipFlushScheduled=false; };
+    const flush = () => { if (_snipDirty) { lsSet(LS_SNIP, JSON.stringify(SNIPPETS)); _snipDirty=false; } _snipFlushScheduled=false; };
     if ('requestIdleCallback' in window) requestIdleCallback(flush, {timeout:500});
     else setTimeout(flush, 500);
   }
@@ -371,203 +206,55 @@
   function saveWrapAnrede(t) { localStorage.setItem(LS_WRAP_ANR, t); }
   function loadWrapSignatur() { return localStorage.getItem(LS_WRAP_SIG) || 'sig'; }
   function saveWrapSignatur(t) { localStorage.setItem(LS_WRAP_SIG, t); }
+  // Feature 2 (v4.4.0): Vorschau vor dem Einfügen (optional, Default aus)
   // v4.5.0: SLA-Alarm-Kanäle (sfhl_sla_blink/sound/notify). Blink default an, Rest aus.
   function loadSla(k) { const v = localStorage.getItem('sfhl_sla_' + k); return k === 'blink' ? v !== '0' : v === '1'; }
   function saveSla(k, on) { localStorage.setItem('sfhl_sla_' + k, on ? '1' : '0'); }
-  // v4.5.0: Regel aus Auswahl (#3) — default an.
+  // v4.5.0: Listen-Features (Farb-Legende #2, Regel aus Auswahl #3) — beide default an.
+  function loadLegendOn() { return localStorage.getItem('sfhl_legend') !== '0'; }
+  function saveLegendOn(on) { localStorage.setItem('sfhl_legend', on ? '1' : '0'); }
   function loadSelRuleOn() { return localStorage.getItem('sfhl_selrule') !== '0'; }
   function saveSelRuleOn(on) { localStorage.setItem('sfhl_selrule', on ? '1' : '0'); }
-  // v4.12.0: Button fest in der SF-Kopfleiste (Einstellung entfernt). Floating bleibt nur als
-  // automatischer Fallback, falls die Header-Injektion scheitert (siehe updateVis).
-  function loadBtnPos() { return 'header'; }
+  // v4.5.0 #4: Button-Position (header | floating | hidden). Default floating = bisheriges Verhalten.
+  function loadBtnPos() { return localStorage.getItem('sfhl_btn_pos') === 'floating' ? 'floating' : 'header'; }
+  function saveBtnPos(v) { localStorage.setItem('sfhl_btn_pos', v); }
   // v4.6.0 Geräte-Doku-Lookup: KEINE URLs als Default (öffentliches Repo) — alle Link-
   // Vorlagen werden lokal per Config-Import geladen. Eintrag: {id,key,label,type,url}.
   // type ∈ root|serial|auftrag|order|free. url nutzt %s als Platzhalter (alle Vorkommen).
   function loadDokuOn() { return localStorage.getItem('sfhl_doku_enabled') !== '0'; }
   function saveDokuOn(on) { localStorage.setItem('sfhl_doku_enabled', on ? '1' : '0'); }
+  // v4.15.0: eigene Adresse als Startpunkt für den "Route"-Auswahl-Shortcut
+  function loadHomeAddr() { return localStorage.getItem('sfhl_home_address') || ''; }
+  function saveHomeAddr(a) { localStorage.setItem('sfhl_home_address', String(a || '').slice(0, 200)); }
+  function loadRulesOn() { return localStorage.getItem('sfhl_rules_enabled') !== '0'; }
+  function saveRulesOn(on) { localStorage.setItem('sfhl_rules_enabled', on ? '1' : '0'); }
+  function loadSnipOn() { return localStorage.getItem('sfhl_snip_enabled') !== '0'; }
+  function saveSnipOn(on) { localStorage.setItem('sfhl_snip_enabled', on ? '1' : '0'); }
+  // FIX v4.6.4 (Security): nur http(s)-URLs mit %s-Platzhalter zulassen —
+  // "javascript:…%s" hätte sonst einen klickbaren JS-Link im Doku-Popup erzeugt.
+  function isSafeDokuUrl(u) { return /^https?:\/\//i.test(u) && /%s/.test(u); }
   function loadDokuLinks() {
-    try { const raw = localStorage.getItem('sfhl_doku_links'); if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.map(e => ({ id:e.id||uid(), key:String(e.key||''), label:String(e.label||''), type:String(e.type||'root'), url:String(e.url||'') })).filter(e => e.url && /%s/.test(e.url)); } } catch {}
+    try { const raw = localStorage.getItem('sfhl_doku_links'); if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p.map(e => ({ id:e.id||uid(), key:String(e.key||''), label:String(e.label||''), type:String(e.type||'root'), url:String(e.url||''), category:String(e.category||''), enabled:e.enabled !== false })).filter(e => isSafeDokuUrl(e.url)); } } catch {}
     return [];
   }
-  function saveDokuLinks(arr) { localStorage.setItem('sfhl_doku_links', JSON.stringify(arr || [])); }
+  function saveDokuLinks(arr) { lsSet('sfhl_doku_links', JSON.stringify(arr || [])); }
+  function loadDokuCatOrder() { try { const r = localStorage.getItem('sfhl_doku_cat_order_v1'); const p = r ? JSON.parse(r) : []; return Array.isArray(p) ? p.map(String) : []; } catch { return []; } }
+  function saveDokuCatOrder(a) { lsSet('sfhl_doku_cat_order_v1', JSON.stringify(a || [])); }
+  // v4.6.5: Reihenfolge der Snippet-Kategorien (Array von Namen). Kategorien, die nicht
+  // in der Liste stehen, werden alphabetisch dahinter einsortiert.
+  function loadCatOrder() { try { const r = localStorage.getItem('sfhl_cat_order_v1'); const p = r ? JSON.parse(r) : []; return Array.isArray(p) ? p.map(String) : []; } catch { return []; } }
+  function saveCatOrder(a) { lsSet('sfhl_cat_order_v1', JSON.stringify(a || [])); }
   // FIX #7: loadDefaultLang cachen
   let _cachedLang = null;
   function loadDefaultLang() { if (_cachedLang === null) _cachedLang = localStorage.getItem(LS_DEF_LANG) || 'de'; return _cachedLang; }
   function saveDefaultLang(lang) { _cachedLang = lang; localStorage.setItem(LS_DEF_LANG, lang); }
 
-  // ===== i18n: Übersetzungswörterbuch =====
-  // Das Skript wird in Deutsch geschrieben; bei Sprache=en werden die DE-Strings nach EN übersetzt.
-  // Eine Runtime-Funktion applyTranslations() ersetzt den Text aller UI-Elemente beim Sprachwechsel.
-  const I18N = {
-    'Markierung': 'Highlights',
-    'Snippets': 'Snippets',
-    'Aktualisierung': 'Auto-Refresh',
-    'Einstellungen': 'Settings',
-    'Hilfe': 'Help',
-    'Neue Regel': 'New rule',
-    'Ordner': 'Folder',
-    'Abbrechen': 'Cancel',
-    'Hinzufügen': 'Add',
-    'Speichern': 'Save',
-    'Löschen': 'Delete',
-    'Duplizieren': 'Duplicate',
-    'Teilen \u2197': 'Share \u2197',
-    'Trigger': 'Trigger',
-    'Bezeichnung': 'Label',
-    'Kategorie': 'Category',
-    'Text': 'Text',
-    'Neue Vorlage': 'New template',
-    'Vorlagen suchen\u2026': 'Search templates\u2026',
-    'Stichwort eingeben\u2026': 'Enter keyword\u2026',
-    'Treffer: ': 'Matches: ',
-    'Intervall': 'Interval',
-    'Sekunden': 'seconds',
-    '\u00dcbernehmen': 'Apply',
-    'Auto-Refresh aktiv': 'Auto-refresh active',
-    'Der Auto-Refresh ist nur auf Case-Listenseiten aktiv. Der Countdown wird direkt im SF-Refresh-Button angezeigt.': 'Auto-refresh is only active on case list pages. The countdown is shown directly in the SF refresh button.',
-    'Allgemein': 'General',
-    'Trigger-Prefix': 'Trigger prefix',
-    'Dein Name': 'Your name',
-    'Default language': 'Default language',
-    'E-Mail Bausteine': 'Email building blocks',
-    'Auto-Wrap': 'Auto-wrap',
-    'Anrede + Signatur automatisch einf\u00fcgen': 'Automatically insert salutation + signature',
-    'Anrede': 'Salutation',
-    'Nachname': 'Last name',
-    'Kontaktname': 'Contact name',
-    'konnte nicht ermittelt werden – bitte vor dem Senden prüfen.': 'could not be resolved – please check before sending.',
-    'Signatur': 'Signature',
-    'Wenn aktiv, wird beim Einf\u00fcgen eines Snippets automatisch die Anrede davor und die Signatur danach eingef\u00fcgt. Gilt nicht wenn das Snippet selbst die Anrede oder Signatur ist.': 'When active, salutation is inserted before and signature after each snippet. Skipped if the snippet itself is the salutation or signature.',
-    'Export': 'Export',
-    'Import': 'Import',
-    'Alles exportieren': 'Export all',
-    '\u2193 Alles exportieren': '\u2193 Export all',
-    '\u2193 Markierungen': '\u2193 Rules',
-    '\u2193 Snippets': '\u2193 Snippets',
-    '\u2191 Datei importieren': '\u2191 Import file',
-    'Importierte Regeln/Snippets ersetzen die bestehenden.': 'Imported rules/snippets replace existing ones.',
-    'Zur\u00fccksetzen': 'Reset',
-    'Markierungen zur\u00fccksetzen': 'Reset rules',
-    'Snippets zur\u00fccksetzen': 'Reset snippets',
-    'Alles zur\u00fccksetzen': 'Reset everything',
-    '\u00dcberblick': 'Overview',
-    'Markierung (Regeln)': 'Highlights (Rules)',
-    'Operatoren im Stichwort-Feld:': 'Operators in keyword field:',
-    'einfache Textsuche (case-insensitive)': 'simple text search (case-insensitive)',
-    'UND: beide m\u00fcssen vorkommen': 'AND: both must be present',
-    'ODER: mindestens einer': 'OR: at least one',
-    'NICHT: darf nicht vorkommen': 'NOT: must not be present',
-    'Regul\u00e4rer Ausdruck': 'Regular expression',
-    'Beispiele:': 'Examples:',
-    'Ordner:': 'Folders:',
-    'Tastatur im Dropdown:': 'Keyboard in dropdown:',
-    'Sprachwahl beim Einf\u00fcgen:': 'Language selection on insert:',
-    'Ohne Pr\u00e4fix: Standard-Sprache aus Einstellungen': 'Without prefix: default language from settings',
-    'Dynamische Abfrage:': 'Dynamic input:',
-    'Salesforce-Merge-Felder:': 'Salesforce merge fields:',
-    'Weitere Features:': 'More features:',
-    'Tastenk\u00fcrzel': 'Shortcuts',
-    'Probleme?': 'Problems?',
-    'Panel \u00f6ffnen/schlie\u00dfen': 'Open/close panel',
-    'Panel/Dropdown schlie\u00dfen': 'Close panel/dropdown',
-    'Snippet-Dropdown \u00f6ffnen (in Textfeldern)': 'Open snippet dropdown (in text fields)',
-    'Platzhalter per ': 'Insert placeholders via ',
-    '-Button oben einf\u00fcgen. Cursor-Position: ': ' button above. Cursor position: ',
-    'Eingabe-Variable: ': 'Input variable: ',
-    '\u2192 fragt beim Einf\u00fcgen nach dem Wert (#45)': '\u2192 prompts for value when inserting',
-    'Fett': 'Bold',
-    'Kursiv': 'Italic',
-    'Unterstrichen': 'Underlined',
-    'Durchgestrichen': 'Strikethrough',
-    'Aufz\u00e4hlung': 'Bullet list',
-    'Nummeriert': 'Numbered',
-    'Link einf\u00fcgen': 'Insert link',
-    'Formatierung entfernen': 'Clear formatting',
-    'Platzhalter einf\u00fcgen': 'Insert placeholder',
-    'Vorlage einf\u00fcgen': 'Insert template',
-    '+ Vorlage': '+ Template',
-    'Vorlagen-Editor': 'Template editor',
-    'neu': 'new',
-    'bearbeiten': 'edit',
-    'Keine Snippets vorhanden': 'No snippets available',
-    'Keine Regeln vorhanden': 'No rules available',
-    // Toasts & Dialoge (toast() übersetzt automatisch via t())
-    'Regel hinzugefügt': 'Rule added',
-    'Gelöscht': 'Deleted',
-    'Rückgängig': 'Undo',
-    'Regel wiederhergestellt': 'Rule restored',
-    'Snippet wiederhergestellt': 'Snippet restored',
-    'Ordner erstellt': 'Folder created',
-    'Ordner gelöscht': 'Folder deleted',
-    'In Ordner verschoben': 'Moved to folder',
-    'Aus Ordner entfernt': 'Removed from folder',
-    'Reihenfolge geändert': 'Order changed',
-    'Exportiert': 'Exported',
-    'Export fehlgeschlagen': 'Export failed',
-    'Import erfolgreich': 'Import successful',
-    'Ungültiges Format': 'Invalid format',
-    'Zurückgesetzt': 'Reset done',
-    'In Zwischenablage kopiert': 'Copied to clipboard',
-    'Kopieren fehlgeschlagen': 'Copy failed',
-    'Snippet aktualisiert': 'Snippet updated',
-    'Snippet erstellt': 'Snippet created',
-    'Snippet gelöscht': 'Snippet deleted',
-    'Kopie erstellt': 'Copy created',
-    'Kategorie umbenannt': 'Category renamed',
-    '★ Favorit gesetzt': '★ Favorite set',
-    'Favorit entfernt': 'Favorite removed',
-    'Auto-Refresh an': 'Auto-refresh on',
-    'Auto-Refresh aus': 'Auto-refresh off',
-    'Auto-Wrap an': 'Auto-wrap on',
-    'Auto-Wrap aus': 'Auto-wrap off',
-    'Vorschau': 'Preview',
-    'Vorschau an': 'Preview on',
-    'Vorschau aus': 'Preview off',
-    'Einfügen': 'Insert',
-    'Abbrechen': 'Cancel',
-    'Was ist neu': "What's new",
-    'Verstanden': 'Got it',
-    'Link kopiert! Kollege kann ihn in SF öffnen.': 'Link copied! A colleague can open it in SF.',
-    'Teilen fehlgeschlagen': 'Sharing failed',
-    'Ungültige Regex — Regel wird als einfache Textsuche behandelt': 'Invalid regex — rule is treated as plain text search',
-    'Backup-Tipp: Regeln & Snippets seit über 30 Tagen nicht exportiert': 'Backup tip: rules & snippets not exported for over 30 days',
-    'Jetzt exportieren': 'Export now',
-    'Markierungsregeln auf Standard zurücksetzen?': 'Reset highlight rules to defaults?',
-    'Snippets auf Standard zurücksetzen?': 'Reset snippets to defaults?',
-    'Alles auf Standard zurücksetzen? (Regeln + Snippets)': 'Reset everything to defaults? (rules + snippets)',
-    'Ordner löschen? Enthaltene Regeln werden in "Ohne Ordner" verschoben.': 'Delete folder? Contained rules move to "No folder".',
-    'Ordnername:': 'Folder name:',
-  };
-
-  function t(s) {
-    if (loadDefaultLang() !== 'en') return s;
-    return I18N[s] || s;
-  }
-
-  // Ersetzt UI-Text bei Sprachwechsel
-  function applyTranslations() {
-    try {
-      // Alle Elemente mit data-i18n Attribut aktualisieren
-      document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        el.textContent = t(key);
-      });
-      document.querySelectorAll('[data-i18n-title]').forEach(el => {
-        const key = el.getAttribute('data-i18n-title');
-        el.title = t(key);
-      });
-      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-        const key = el.getAttribute('data-i18n-placeholder');
-        el.placeholder = t(key);
-      });
-    } catch {}
-  }
 
   // ===== Datenmigration (#18) =====
   function runMigrations() {
     const ver = localStorage.getItem(LS_DATA_VER) || '0';
     if (semverLt(ver, DATA_VERSION)) { // FIX #1: semantischer Versionsvergleich
-      // Sicherstellen dass alle Snippets usageCount + bodyEn haben
+      // Sicherstellen dass alle Snippets bodyEn haben
       try {
         const raw = localStorage.getItem(LS_SNIP);
         if (raw) {
@@ -575,10 +262,9 @@
           if (Array.isArray(p)) {
             const migrated = p.map(e => ({
               ...e,
-              usageCount: Number(e.usageCount) || 0,
               bodyEn: String(e.bodyEn || '')
             }));
-            localStorage.setItem(LS_SNIP, JSON.stringify(migrated));
+            lsSet(LS_SNIP, JSON.stringify(migrated));
           }
         }
       } catch {}
@@ -611,31 +297,20 @@
 
   // FIX #3: Doppeltes saveSnippets() entfernt — mergeDefaultSnippets() speichert bereits wenn nötig
 
-  // ===== Recently Used (#15) =====
-  function loadRecent() { try { const r = localStorage.getItem(LS_RECENT); return r ? JSON.parse(r) : []; } catch { return []; } }
-  function addRecent(id) {
-    let r = loadRecent().filter(x => x !== id);
-    r.unshift(id);
-    r = r.slice(0, 8); // letzte 8 merken
-    localStorage.setItem(LS_RECENT, JSON.stringify(r));
-  }
-
   function loadFolders() { try { const r = localStorage.getItem(LS_FOLDERS); return r ? JSON.parse(r) : []; } catch { return []; } }
-  function saveFolders() { localStorage.setItem(LS_FOLDERS, JSON.stringify(FOLDERS)); }
+  function saveFolders() { lsSet(LS_FOLDERS, JSON.stringify(FOLDERS)); }
   let FOLDERS = loadFolders();
 
   // QF5: nur ein Toast gleichzeitig — schnelle Folge-Toasts ersetzen den alten statt zu stapeln.
   // Optionales action={label,fn} rendert einen Button (z.B. "Rückgängig" nach Löschen).
-  // Statische Meldungen werden automatisch via t() übersetzt.
   let _toastEl = null;
   function toast(msg, type='info', dur=2500, action=null) {
-    msg = t(msg);
     if (_toastEl) { _toastEl.remove(); _toastEl = null; }
     const el = document.createElement('div'); el.className = `sfhl-toast sfhl-toast--${type}`; el.textContent = msg;
     if (action && typeof action.fn === 'function') {
       el.classList.add('has-action');
       const btn = document.createElement('button');
-      btn.className = 'sfhl-toast-act'; btn.textContent = t(action.label || 'OK');
+      btn.className = 'sfhl-toast-act'; btn.textContent = action.label || 'OK';
       btn.onclick = () => { el.remove(); if (_toastEl === el) _toastEl = null; try { action.fn(); } catch {} };
       el.appendChild(btn);
       dur = Math.max(dur, 5000);
@@ -840,7 +515,14 @@
       'entfernen','remove','hinzufügen','add','schließen','close','öffnen','open',
       'siehe alle','view all','show all','alle anzeigen','no value','keine'
     ];
-    for (const bad of UI_BLACKLIST) if (lower.includes(bad)) return false;
+    // FIX v4.6.4 (Bug 2): wortweise prüfen statt Substring — "Neumann" enthält "neu",
+    // "Newton" enthält "new", "Mehringer" enthält "mehr" → echte Nachnamen wurden verworfen.
+    // Mehrwort-/Sonderzeichen-Einträge (z. B. "siehe alle", "×") weiter per Substring.
+    const nameWords = new Set(lower.split(/[^a-zäöüß]+/).filter(Boolean));
+    for (const bad of UI_BLACKLIST) {
+      if (/[^a-zäöüß]/.test(bad)) { if (lower.includes(bad)) return false; }
+      else if (nameWords.has(bad)) return false;
+    }
     const letters = (v.match(/[A-Za-zÄÖÜäöüß]/g) || []).length;
     if (letters / v.length < 0.5) return false;
     // Einzelwort-Namen müssen typische Nicht-Personen-Begriffe ausschließen
@@ -1204,7 +886,9 @@
           MobilePhone: f.MobilePhone?.value || ''
         };
         _contactApiCacheId = contactId;
-        console.log('[SFHL] Contact via UI API geladen:', _contactApiCache);
+        // FIX v4.6.4 (Datenschutz): nur die Record-Id loggen — Name/Telefon gehören
+        // nicht in die Browser-Konsole (bleibt dort auch nach Navigation lesbar).
+        console.log('[SFHL] Contact via UI API geladen (Id: ' + contactId + ')');
       }
     } catch (e) {
       console.warn('[SFHL] Contact-Fetch Exception:', e);
@@ -1296,25 +980,28 @@
     // v4.5.1: Leere {!…}-Felder NIE mehr als rohe Merge-Syntax in die Mail schreiben,
     // sondern als lesbaren [Platzhalter]. Anrede/Nachname/Kontakt bleiben leer ('') —
     // dafür greift das Sicherheitsnetz (Warn-Toast), '[Anrede]' o.Ä. will man nicht im Text.
+    // FIX v4.6.4 (Bug 3): Werte als Funktion übergeben — sonst interpretiert .replace()
+    // "$&", "$'" usw. in gescrapten Feldwerten als Ersetzungsmuster.
+    const _rep = v => () => v;
     text = text
-      .replace(/\{!Case\.CaseNumber\}/gi,                    caseNum    || '[Case-Nr.]')
-      .replace(/\{!Case\.Subject\}/gi,                       betreff    || '[Betreff]')
-      .replace(/\{!Case\.Serial_number__c\}/gi,              seriennr   || '[Seriennr.]')
-      .replace(/\{!Case\.Work_Order__c\}/gi,                 arbeitsauf || '[Arbeitsauftrag]')
-      .replace(/\{!Case\.Communication_Owner__c\}/gi,        techniker  || '[Techniker]')
-      .replace(/\{!Case\.Solution_Steps__c\}/gi,             loesung    || '[Lösungstext]')
-      .replace(/\{!Contact\.Salutation\}/gi,                 anrede     || '')
-      .replace(/\{!Contact\.LastName\}/gi,                   nachname   || '')
-      .replace(/\{!Contact\.Name\}/gi,                       kontakt    || '')
-      .replace(/\{!Contact\.PhoneFormula__c\}/gi,            telefon    || '[Telefon]')
-      .replace(/\{!Contact\.MobilePhone\}/gi,                mobil      || '[Mobil]')
-      .replace(/\{!User\.Name\}/gi,                          loadUname()|| '[Name]')
-      .replace(/\{!Today\}/gi,                               dateStr)
-      .replace(/\{!Account\.Internal_Sales_Engineer__c\}/gi, vertrieb   || '[Vertrieb ASP]')
-      .replace(/\{!Account\.SAPAccountID__c\}/gi,            kundennr   || '[Kundennr.]')
-      .replace(/\{!Account\.FTXTAccountName__c\}/gi,         firma      || '[Firma]')
-      .replace(/\{!Account\.Street__c\}/gi,                  strasse    || '[Straße]')
-      .replace(/\{!Account\.City__c\}/gi,                    ort        || '[Ort]');
+      .replace(/\{!Case\.CaseNumber\}/gi,                    _rep(caseNum    || '[Case-Nr.]'))
+      .replace(/\{!Case\.Subject\}/gi,                       _rep(betreff    || '[Betreff]'))
+      .replace(/\{!Case\.Serial_number__c\}/gi,              _rep(seriennr   || '[Seriennr.]'))
+      .replace(/\{!Case\.Work_Order__c\}/gi,                 _rep(arbeitsauf || '[Arbeitsauftrag]'))
+      .replace(/\{!Case\.Communication_Owner__c\}/gi,        _rep(techniker  || '[Techniker]'))
+      .replace(/\{!Case\.Solution_Steps__c\}/gi,             _rep(loesung    || '[Lösungstext]'))
+      .replace(/\{!Contact\.Salutation\}/gi,                 _rep(anrede     || ''))
+      .replace(/\{!Contact\.LastName\}/gi,                   _rep(nachname   || ''))
+      .replace(/\{!Contact\.Name\}/gi,                       _rep(kontakt    || ''))
+      .replace(/\{!Contact\.PhoneFormula__c\}/gi,            _rep(telefon    || '[Telefon]'))
+      .replace(/\{!Contact\.MobilePhone\}/gi,                _rep(mobil      || '[Mobil]'))
+      .replace(/\{!User\.Name\}/gi,                          _rep(loadUname()||'[Name]'))
+      .replace(/\{!Today\}/gi,                               _rep(dateStr))
+      .replace(/\{!Account\.Internal_Sales_Engineer__c\}/gi, _rep(vertrieb   || '[Vertrieb ASP]'))
+      .replace(/\{!Account\.SAPAccountID__c\}/gi,            _rep(kundennr   || '[Kundennr.]'))
+      .replace(/\{!Account\.FTXTAccountName__c\}/gi,         _rep(firma      || '[Firma]'))
+      .replace(/\{!Account\.Street__c\}/gi,                  _rep(strasse    || '[Straße]'))
+      .replace(/\{!Account\.City__c\}/gi,                    _rep(ort        || '[Ort]'));
 
     // Eingabe-Variablen auflösen (#45): {eingabe:Beschriftung} → fragt Nutzer
     // WICHTIG: Diese Auflösung passiert erst beim Einfügen (nicht in der Vorschau)
@@ -1338,39 +1025,40 @@
     }
 
     return text
-      .replace(/\{name\}/gi,          loadUname()  || '[Name]')
-      .replace(/\{datum\}/gi,          dateStr)
-      .replace(/\{uhrzeit\}/gi,        timeStr)
-      .replace(/\{case\}/gi,           caseNum      || '[Case-Nr.]')
-      .replace(/\{betreff\}/gi,        betreff      || '[Betreff]')
-      .replace(/\{anrede\}/gi,         anrede       || '')
-      .replace(/\{nachname\}/gi,       nachname     || '[Name]')
-      .replace(/\{kontakt\}/gi,        kontakt      || '[Kontakt]')
-      .replace(/\{kunde\}/gi,          kunde        || '[Kunde]')
-      .replace(/\{produkt\}/gi,        produkt      || '[Produkt]')
-      .replace(/\{seriennummer\}/gi,   seriennr     || '[Seriennr.]')
-      .replace(/\{telefon\}/gi,        telefon      || '[Telefon]')
-      .replace(/\{mobil\}/gi,          mobil        || '[Mobil]')
-      .replace(/\{arbeitsauftrag\}/gi, arbeitsauf   || '[Arbeitsauftrag]')
-      .replace(/\{vertrieb\}/gi,       vertrieb     || '[Vertrieb ASP]')
-      .replace(/\{techniker\}/gi,      techniker    || '[Techniker]')
-      .replace(/\{kundennr\}/gi,       kundennr     || '[Kundennr.]')
-      .replace(/\{firma\}/gi,          firma        || '[Firma]')
-      .replace(/\{strasse\}/gi,        strasse      || '[Straße]')
-      .replace(/\{ort\}/gi,            ort          || '[Ort]')
-      .replace(/\{loesung\}/gi,        '[Lösungstext]');
+      .replace(/\{name\}/gi,          _rep(loadUname() || '[Name]'))
+      .replace(/\{datum\}/gi,          _rep(dateStr))
+      .replace(/\{uhrzeit\}/gi,        _rep(timeStr))
+      .replace(/\{case\}/gi,           _rep(caseNum      || '[Case-Nr.]'))
+      .replace(/\{betreff\}/gi,        _rep(betreff      || '[Betreff]'))
+      .replace(/\{anrede\}/gi,         _rep(anrede       || ''))
+      .replace(/\{nachname\}/gi,       _rep(nachname     || '[Name]'))
+      .replace(/\{kontakt\}/gi,        _rep(kontakt      || '[Kontakt]'))
+      .replace(/\{kunde\}/gi,          _rep(kunde        || '[Kunde]'))
+      .replace(/\{produkt\}/gi,        _rep(produkt      || '[Produkt]'))
+      .replace(/\{seriennummer\}/gi,   _rep(seriennr     || '[Seriennr.]'))
+      .replace(/\{telefon\}/gi,        _rep(telefon      || '[Telefon]'))
+      .replace(/\{mobil\}/gi,          _rep(mobil        || '[Mobil]'))
+      .replace(/\{arbeitsauftrag\}/gi, _rep(arbeitsauf   || '[Arbeitsauftrag]'))
+      .replace(/\{vertrieb\}/gi,       _rep(vertrieb     || '[Vertrieb ASP]'))
+      .replace(/\{techniker\}/gi,      _rep(techniker    || '[Techniker]'))
+      .replace(/\{kundennr\}/gi,       _rep(kundennr     || '[Kundennr.]'))
+      .replace(/\{firma\}/gi,          _rep(firma        || '[Firma]'))
+      .replace(/\{strasse\}/gi,        _rep(strasse      || '[Straße]'))
+      .replace(/\{ort\}/gi,            _rep(ort          || '[Ort]'))
+      .replace(/\{loesung\}/gi,        _rep('[Lösungstext]'));
   }
 
   // ===== Count matches for a term =====
   function countMatches(term) {
     if (!term) return 0;
     const rows = getRows();
+    const needCols = term.includes('=');
     let n = 0;
     for (const row of rows) {
       const cells = row.querySelectorAll('td');
       let txt = '';
       for (const c of cells) txt += ' ' + (c.innerText || c.textContent || '');
-      if (matchesRule(txt, term)) n++;
+      if (matchesRule(txt, term, needCols ? getRowCols(row) : null)) n++;
     }
     return n;
   }
@@ -1383,6 +1071,13 @@
     .tm-sfhl-mark,.tm-sfhl-mark>td,.tm-sfhl-mark [role="gridcell"],.tm-sfhl-mark .slds-hint-parent,.tm-sfhl-mark .slds-cell-wrap{background-color:var(--sfhl-bg)!important}
     @keyframes sfhl-blink{0%,100%{opacity:1}50%{opacity:.3}}
     .sfhl-new-match td,.sfhl-new-match [role="gridcell"]{animation:sfhl-blink .5s ease 3}
+
+    /* v4.7.0: Import-Dialog (Vorschau + Ersetzen/Hinzufügen) */
+    .sfhl-modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    .sfhl-modal{background:#fff;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.3);width:360px;max-width:92vw;padding:16px}
+    .sfhl-modal h3{margin:0 0 8px;font-size:14px;font-weight:700;color:#1a1a1a}
+    .sfhl-modal-body{font-size:12.5px;color:#374151;margin:0 0 14px;line-height:1.6}
+    .sfhl-modal-acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
 
     /* Toast */
     /* #6 Toasts im SLDS-Look (Theme-Farben, 0.25rem, Icon je Typ). Unten-mittig → keine Kollision mit SF-Toasts (oben-mittig). */
@@ -1419,11 +1114,11 @@
 
     /* Backdrop + Panel */
     .sfhl-backdrop{position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.08);opacity:0;pointer-events:none;transition:opacity .25s} .sfhl-backdrop.vis{opacity:1;pointer-events:auto}
-    .sfhl-panel{position:fixed;top:0;right:0;bottom:0;width:420px;min-width:340px;max-width:700px;background:#fff;z-index:2147483647;box-shadow:-8px 0 40px rgba(0,0,0,.12);transform:translateX(100%);transition:transform .28s cubic-bezier(.22,.68,0,1);display:flex;flex-direction:column;font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1a1a1a}
+    .sfhl-panel{position:fixed;top:0;right:0;bottom:0;width:460px;min-width:340px;max-width:700px;background:#fff;z-index:2147483647;box-shadow:-8px 0 40px rgba(0,0,0,.12);transform:translateX(100%);transition:transform .28s cubic-bezier(.22,.68,0,1);display:flex;flex-direction:column;font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1a1a1a}
     .sfhl-panel.open{transform:translateX(0)} .sfhl-panel.resizing{transition:none;user-select:none}
-    .sfhl-resize{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:ew-resize;z-index:5}
-    .sfhl-resize::after{content:'';position:absolute;left:2px;top:50%;transform:translateY(-50%);width:2px;height:32px;background:#d1d5db;border-radius:2px;opacity:0;transition:opacity .15s}
-    .sfhl-resize:hover::after,.sfhl-panel.resizing .sfhl-resize::after{opacity:1}
+    .sfhl-resize{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:5}
+    .sfhl-resize::after{content:'';position:absolute;left:3px;top:50%;transform:translateY(-50%);width:2px;height:40px;background:#d1d5db;border-radius:2px;opacity:.25;transition:opacity .15s,background .15s}
+    .sfhl-resize:hover::after,.sfhl-panel.resizing .sfhl-resize::after{opacity:1;background:#0176d3}
 
     /* Header + Tabs */
     .sfhl-hdr{padding:10px 16px 0;border-bottom:1px solid #e5e7eb;background:#f9fafb;flex-shrink:0}
@@ -1434,9 +1129,9 @@
     .sfhl-ib:hover{background:#f3f4f6;color:#111} .sfhl-ib svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
     .sfhl-ib.sfhl-help-btn.active{background:#eef4ff;color:#0176d3}
     .sfhl-ib.sfhl-settings-btn.active{background:#eef4ff;color:#0176d3}
-    .sfhl-tabs{display:flex;gap:0;margin:0 -16px;padding:0 16px;overflow-x:auto;scrollbar-width:none}
-    .sfhl-tabs::-webkit-scrollbar{display:none}
-    .sfhl-tab{padding:8px 13px;font-size:12.5px;font-weight:500;color:#9ca3af;cursor:pointer;border-bottom:2px solid transparent;transition:color .12s,border-color .12s;white-space:nowrap;flex-shrink:0}
+    .sfhl-tabs{display:flex;gap:0;margin:0 -16px;padding:0 16px}
+    .sfhl-tab{padding:8px 10px;font-size:12.5px;font-weight:500;color:#9ca3af;cursor:pointer;border-bottom:2px solid transparent;transition:color .12s,border-color .12s;white-space:nowrap;display:flex;align-items:center;gap:4px}
+    .sfhl-tab svg{flex-shrink:0;opacity:.7;transition:opacity .12s} .sfhl-tab.active svg,.sfhl-tab:hover svg{opacity:1}
     .sfhl-tab:hover{color:#374151} .sfhl-tab.active{color:#0176d3;border-bottom-color:#0176d3}
     .sfhl-tab-badge{font-size:10px;font-weight:600;background:#e5e7eb;color:#6b7280;padding:0 5px;border-radius:99px;margin-left:4px}
     .sfhl-tab.active .sfhl-tab-badge{background:#eef4ff;color:#0176d3}
@@ -1454,15 +1149,17 @@
     .sfhl-overflow hr{border:none;border-top:1px solid #f3f4f6;margin:3px 0}
 
     /* Search bar (shared) */
-    .sfhl-search{padding:8px 16px;border-bottom:1px solid #f3f4f6;flex-shrink:0}
-    .sfhl-search input{width:100%;padding:6px 10px 6px 30px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") 10px center no-repeat;transition:border-color .12s}
+    .sfhl-search{padding:8px 16px;border-bottom:1px solid #f3f4f6;flex-shrink:0;position:relative}
+    .sfhl-search input{width:100%;padding:6px 28px 6px 30px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") 10px center no-repeat;transition:border-color .12s}
     .sfhl-search input:focus{outline:none;border-color:#0176d3;box-shadow:0 0 0 2px rgba(1,118,211,.1)}
+    .sfhl-search-clear{position:absolute;right:20px;top:50%;transform:translateY(-50%);cursor:pointer;color:#9ca3af;font-size:13px;width:18px;height:18px;display:none;align-items:center;justify-content:center;border-radius:50%;transition:background .12s,color .12s}
+    .sfhl-search-clear:hover{background:#f3f4f6;color:#374151} .sfhl-search-clear.vis{display:flex}
 
     /* Rules tab styles */
-    .sfhl-colhdr{display:grid;grid-template-columns:20px minmax(0,1fr) 28px auto;gap:4px;padding:6px 16px;font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #f3f4f6;flex-shrink:0}
+    .sfhl-colhdr{display:grid;grid-template-columns:20px 36px minmax(0,1fr) 28px auto;gap:4px;padding:6px 16px;font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #f3f4f6;flex-shrink:0}
     .sfhl-list{flex:1;overflow-y:auto;overflow-x:hidden;padding:2px 0;min-height:0}
     .sfhl-list::-webkit-scrollbar{width:4px} .sfhl-list::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:4px}
-    .sfhl-row{display:grid;grid-template-columns:20px 22px minmax(0,1fr) 28px auto;gap:4px;padding:5px 16px;align-items:center;transition:background .12s;cursor:grab;border-left:3px solid transparent}
+    .sfhl-row{display:grid;grid-template-columns:20px 36px minmax(0,1fr) 28px auto;gap:4px;padding:5px 16px;align-items:center;transition:background .12s;cursor:grab;border-left:3px solid transparent}
     .sfhl-row:hover{background:#f9fafb} .sfhl-row.disabled{opacity:.45} .sfhl-row.disabled .sfhl-r-term{text-decoration:line-through;color:#9ca3af}
     .sfhl-row.dragging{opacity:.3;background:#eef4ff} .sfhl-row.drag-over-top{border-top:2px solid #0176d3} .sfhl-row.drag-over-bot{border-bottom:2px solid #0176d3}
     .sfhl-grip{color:#d1d5db;cursor:grab;display:flex;align-items:center;justify-content:center}
@@ -1476,7 +1173,7 @@
     .sfhl-palette{position:fixed;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.14);padding:8px;z-index:2147483647;opacity:0;pointer-events:none;transition:opacity .12s;min-width:200px}
     .sfhl-palette.vis{opacity:1;pointer-events:auto}
     .sfhl-palette-label{font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px}
-    .sfhl-palette-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:8px}
+    .sfhl-palette-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:8px;max-width:180px}
     .sfhl-preset{width:30px;height:30px;border-radius:6px;border:2px solid transparent;cursor:pointer;transition:border-color .1s,transform .1s;position:relative}
     .sfhl-preset:hover{transform:scale(1.12);border-color:#90d0fe} .sfhl-preset.active{border-color:#0176d3;box-shadow:0 0 0 1px #0176d3}
     .sfhl-preset-name{position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);font-size:7px;color:#9ca3af;white-space:nowrap;opacity:0;transition:opacity .1s;pointer-events:none}
@@ -1490,8 +1187,16 @@
     .sfhl-ra.toggle-off{color:#9ca3af} .sfhl-ra.toggle-off svg{stroke:#9ca3af}
     .sfhl-ra.alarm-on{color:#dc2626} .sfhl-ra.alarm-on svg{stroke:#dc2626;fill:#fee2e2}
     .sfhl-ra.alarm-off svg{stroke:#cbd5e1;fill:none} .sfhl-ra.alarm-off:hover svg{stroke:#dc2626}
+    /* #2 Farb-Legende über der Case-Liste */
+    .sfhl-legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 10px;margin:0 0 4px;background:#f8f9fb;border:1px solid #e5e7eb;border-radius:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    .sfhl-legend-ttl{font-size:10.5px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.4px;margin-right:2px}
+    .sfhl-legend-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#374151;background:#fff;border:1px solid #e5e7eb;border-radius:99px;padding:2px 8px}
+    .sfhl-legend-chip b{color:#0176d3;font-size:11px}
+    .sfhl-legend-sw{width:10px;height:10px;border-radius:3px;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+    .sfhl-legend-bell{font-size:10px}
     /* #3 „Regel aus Auswahl"-Button */
-    .sfhl-sel-btn{position:absolute;z-index:2147483646;background:#0176d3;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:12px;font-weight:600;padding:5px 10px;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;user-select:none;white-space:nowrap}
+    .sfhl-sel-wrap{position:absolute;z-index:2147483646;display:flex;gap:4px}
+    .sfhl-sel-btn{background:#0176d3;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:12px;font-weight:600;padding:5px 10px;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;user-select:none;white-space:nowrap}
     .sfhl-sel-btn:hover{background:#014486}
     /* v4.6.0 Geräte-Doku-Lookup Popup */
     .sfhl-doku-pop{position:absolute;z-index:2147483646;min-width:200px;max-width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:8px 10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
@@ -1502,32 +1207,31 @@
     .sfhl-doku-lnk:hover{background:#0176d3;color:#fff;border-color:#0176d3}
     .sfhl-doku-more{margin-top:8px;font-size:11px;font-weight:600;color:#0176d3;cursor:pointer;user-select:none}
     .sfhl-doku-more:hover{text-decoration:underline}
-    /* v4.7.0 Vorlagen-Editor (Stufe 1.5) */
-    .sfhl-doku-ed-wrap{margin-top:8px}
-    .sfhl-doku-ed{max-height:280px;overflow-y:auto;overflow-x:hidden;padding:2px}
-    .sfhl-doku-ed::-webkit-scrollbar{width:4px} .sfhl-doku-ed::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:4px}
-    .sfhl-de-card{border:1px solid #e5e7eb;border-radius:6px;padding:6px;margin-bottom:6px;background:#fafafa}
-    .sfhl-de-line{display:flex;gap:5px;align-items:center;margin-bottom:4px}
-    .sfhl-de-line:last-child{margin-bottom:0}
-    .sfhl-de-card input,.sfhl-de-card select{padding:4px 7px;border:1px solid #e5e7eb;border-radius:5px;font-size:11.5px;min-width:0;background:#fff;color:#374151}
-    .sfhl-de-card input:focus,.sfhl-de-card select:focus{outline:none;border-color:#0176d3;box-shadow:0 0 0 2px rgba(1,118,211,.1)}
-    .sfhl-de-key{width:80px;flex-shrink:0;font-weight:600}
-    .sfhl-de-type{flex:1}
-    .sfhl-de-label{flex:1}
-    .sfhl-de-url{flex:1;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px}
-    .sfhl-de-url.sfhl-de-bad{border-color:#e5a000;background:#fffbeb}
-    .sfhl-de-del{flex-shrink:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:5px;color:#9ca3af;cursor:pointer;font-size:13px;line-height:1}
-    .sfhl-de-del:hover{background:#fde8e8;color:#dc2626}
-    .sfhl-de-hint{font-size:10.5px;color:#9ca3af;margin:2px 2px 0}
-    .sfhl-de-hint b{color:#e5a000}
-    /* v4.10.0 Rotierende Auto-Backups */
-    .sfhl-backup-list{display:flex;flex-direction:column;gap:6px}
-    .sfhl-bk-row{display:flex;align-items:center;gap:8px;border:1px solid #e5e7eb;border-radius:6px;padding:6px 8px;background:#fafafa}
-    .sfhl-bk-meta{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
-    .sfhl-bk-when{font-size:12px;font-weight:600;color:#374151}
-    .sfhl-bk-reason{font-size:10.5px;color:#6b7280}
-    .sfhl-bk-counts{font-size:10px;color:#9ca3af}
-    .sfhl-bk-row .sfhl-btn-sm{flex-shrink:0}
+    /* Doku Tab */
+    .sfhl-doku-tab-bar,.sfhl-feat-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #f3f4f6;flex-shrink:0}
+    .sfhl-feat-bar-label{font-size:11px;color:#6b7280}
+    .sfhl-feat-bar.off .sfhl-feat-bar-label{color:#9ca3af;text-decoration:line-through}
+    .sfhl-doku-form{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-top:1px solid #eef4ff;background:#f8faff;flex-shrink:0}
+    .sfhl-doku-form-row{display:flex;gap:6px}
+    .sfhl-doku-f-key{flex:0 0 100px;padding:5px 8px;border:1px solid #e5e7eb;border-radius:5px;font-size:12px}
+    .sfhl-doku-f-type{flex:1;padding:5px 6px;border:1px solid #e5e7eb;border-radius:5px;font-size:12px;background:#fff}
+    .sfhl-doku-f-label,.sfhl-doku-f-url,.sfhl-doku-f-cat{width:100%;box-sizing:border-box;padding:5px 8px;border:1px solid #e5e7eb;border-radius:5px;font-size:12px}
+    .sfhl-doku-f-url:invalid{border-color:#f87171}
+    .sfhl-doku-form-acts{display:flex;gap:6px;justify-content:flex-end}
+    .sfhl-doku-link-list{flex:1;overflow-y:auto;padding:6px 0}
+    .sfhl-doku-entry{display:flex;flex-direction:column;gap:3px;padding:7px 12px;border-bottom:1px solid #f9fafb;cursor:default}
+    .sfhl-doku-entry:hover{background:#f9fafb}
+    .sfhl-doku-entry-top{display:flex;align-items:center;gap:6px}
+    .sfhl-doku-entry-key{font-size:11px;font-weight:700;background:#eef4ff;color:#0176d3;border-radius:4px;padding:1px 6px;flex-shrink:0}
+    .sfhl-doku-entry-type{font-size:10px;color:#9ca3af;background:#f3f4f6;border-radius:3px;padding:1px 5px;flex-shrink:0}
+    .sfhl-doku-entry-label{font-size:12px;font-weight:500;color:#1a1a1a;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .sfhl-doku-entry-url{font-size:10.5px;color:#9ca3af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .sfhl-doku-entry-acts{display:flex;gap:4px;flex-shrink:0}
+    .sfhl-doku-entry-edit,.sfhl-doku-entry-del{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:4px;cursor:pointer;color:#9ca3af;transition:background .1s,color .1s}
+    .sfhl-doku-entry-edit:hover{background:#eef4ff;color:#0176d3}
+    .sfhl-doku-entry-del:hover{background:#fee2e2;color:#dc2626}
+    .sfhl-doku-entry.disabled .sfhl-doku-entry-key,.sfhl-doku-entry.disabled .sfhl-doku-entry-label,.sfhl-doku-entry.disabled .sfhl-doku-entry-url{opacity:.4;text-decoration:line-through}
+    .sfhl-doku-empty{padding:24px 16px;text-align:center;color:#9ca3af;font-size:12px}
     /* #4 Header-Icon in der SLDS-Kopfleiste */
     .sfhl-hdr-item .sfhl-hdr-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:2rem;height:2rem;min-width:2rem;background:transparent;border:none;cursor:pointer;color:inherit;padding:0}
     .sfhl-hdr-mark{display:inline-flex;width:20px;height:20px}
@@ -1576,13 +1280,13 @@
     .sfhl-snip-copy svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
     /* Snippet editor (inline) */
-    .sfhl-snip-editor{display:none;padding:12px 16px;border-top:1px solid #f3f4f6;background:#fafafa;flex-shrink:0;overflow-y:auto;max-height:50vh}
+    .sfhl-snip-editor{display:none;padding:12px 16px;border-top:1px solid #f3f4f6;background:#fafafa;flex-shrink:0;overflow-y:auto;max-height:75vh}
     .sfhl-snip-editor.vis{display:block}
     .sfhl-snip-editor .sfhl-field{margin-bottom:8px}
     .sfhl-snip-editor .sfhl-field label{display:block;font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px}
     .sfhl-snip-editor input,.sfhl-snip-editor select{width:100%;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12.5px}
     .sfhl-snip-editor input:focus,.sfhl-snip-editor select:focus,.sfhl-snip-editor textarea:focus{outline:none;border-color:#0176d3;box-shadow:0 0 0 2px rgba(1,118,211,.1)}
-    .sfhl-snip-editor textarea{width:100%;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:monospace;min-height:100px;resize:vertical;line-height:1.5}
+    .sfhl-snip-editor textarea{width:100%;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;font-family:monospace;min-height:160px;resize:vertical;line-height:1.5;white-space:pre;overflow-x:auto}
     .sfhl-snip-editor .sfhl-ed-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
     .sfhl-snip-editor .sfhl-ed-foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb}
     .sfhl-snip-editor .sfhl-richtext-hint{font-size:10px;color:#9ca3af;display:flex;align-items:center;gap:4px}
@@ -1601,8 +1305,6 @@
     .sfhl-dd-item{display:flex;flex-direction:column;padding:8px 10px;border-radius:6px;cursor:pointer;transition:background .1s}
     .sfhl-dd-item:hover,.sfhl-dd-item.selected{background:#f3f4f6}
     .sfhl-dd-item-top{display:flex;align-items:center;gap:6px}
-    .sfhl-dd-num{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;font-size:9.5px;font-weight:700;color:#9ca3af;background:#f3f4f6;border-radius:3px;flex-shrink:0}
-    .sfhl-dd-item.selected .sfhl-dd-num{color:#0176d3;background:#eef4ff}
     .sfhl-dd-trigger{font-family:monospace;font-size:11px;font-weight:600;color:#0176d3;background:#eef4ff;padding:1px 5px;border-radius:3px}
     .sfhl-dd-label{font-size:12px;font-weight:500;color:#1a1a1a}
     .sfhl-dd-cat{font-size:10px;color:#9ca3af;margin-left:auto}
@@ -1616,6 +1318,8 @@
     .sfhl-cat-hdr.collapsed svg{transform:rotate(-90deg)}
     .sfhl-cat-count{margin-left:auto;font-size:10px;font-weight:500;color:#9ca3af}
     .sfhl-cat-body.collapsed{display:none}
+    .sfhl-cat-del{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:3px;cursor:pointer;color:#d1d5db;font-size:11px;flex-shrink:0;line-height:1;transition:background .1s,color .1s}
+    .sfhl-cat-del:hover{background:#fee2e2;color:#dc2626}
 
     /* Folder headers (rules) */
     .sfhl-folder-hdr{display:flex;align-items:center;gap:6px;padding:5px 12px 5px 16px;cursor:pointer;user-select:none;background:#eef4ff;border-bottom:1px solid #eef4ff;border-top:1px solid #eef4ff;font-size:11px;font-weight:600;color:#014486;transition:background .12s}
@@ -1630,6 +1334,9 @@
     .sfhl-folder-body.collapsed{display:none}
     .sfhl-folder-body .sfhl-row{padding-left:28px}
     .sfhl-folder-hdr.drag-over-folder{background:#ddd6fe!important;outline:2px dashed #0176d3}
+    /* v4.6.5: Sortier-Pfeile für Ordner + Snippet-Kategorien */
+    .sfhl-mv{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;cursor:pointer;color:#9ca3af;font-size:9px;flex-shrink:0;user-select:none;transition:background .1s,color .1s}
+    .sfhl-mv:hover{background:#dbeafe;color:#0176d3}
     .sfhl-ungrouped-body.drag-over-folder{outline:2px dashed #9ca3af;background:#f9fafb}
     .sfhl-ungrouped-hdr{display:flex;align-items:center;gap:6px;padding:4px 16px;font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #f3f4f6;background:#fafafa;flex-shrink:0}
     .sfhl-folder-add-btn{display:flex;align-items:center;gap:4px;padding:5px 10px;border:1px dashed #c4b5fd;border-radius:6px;background:none;cursor:pointer;color:#0176d3;font-size:11px;font-weight:500;transition:all .15s;white-space:nowrap;flex-shrink:0}
@@ -1643,7 +1350,7 @@
     .sfhl-rtb:hover{background:#e5e7eb} .sfhl-rtb.active{background:#ddd6fe;color:#0176d3}
     .sfhl-rtb svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
     .sfhl-rte-divider{width:1px;background:#e5e7eb;margin:3px 2px;flex-shrink:0}
-    .sfhl-rte-body{min-height:100px;max-height:200px;overflow-y:auto;padding:8px 10px;font-size:12.5px;line-height:1.6;outline:none;word-break:break-word}
+    .sfhl-rte-body{min-height:160px;max-height:420px;overflow-y:auto;overflow-x:auto;padding:8px 10px;font-size:12.5px;line-height:1.6;outline:none;white-space:pre-wrap}
     .sfhl-rte-body:focus{box-shadow:inset 0 0 0 2px rgba(1,118,211,.15)}
     .sfhl-rte-body ul,.sfhl-rte-body ol{padding-left:18px;margin:2px 0}
     .sfhl-rte-body a{color:#0176d3;text-decoration:underline}
@@ -1676,18 +1383,6 @@
     .sfhl-help-tbl td{padding:4px 7px;border-bottom:1px solid #f9fafb;vertical-align:top}
     .sfhl-help-tbl tr:last-child td{border-bottom:none}
     .sfhl-help-tbl td:first-child{white-space:nowrap;color:#4b5563}
-    /* Regel-Tester */
-    .sfhl-tester-bar{border-top:1px solid #f3f4f6;flex-shrink:0}
-    .sfhl-tester-toggle{display:flex;align-items:center;gap:6px;padding:7px 14px;cursor:pointer;font-size:11.5px;color:#6b7280;user-select:none;transition:background .15s}
-    .sfhl-tester-toggle:hover{background:#f9fafb;color:#374151}
-    .sfhl-tester-toggle svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;flex-shrink:0}
-    .sfhl-tester-chv{margin-left:auto;transition:transform .2s}
-    .sfhl-tester-bar.open .sfhl-tester-chv{transform:rotate(180deg)}
-    .sfhl-tester-body{display:none;padding:0 14px 10px}
-    .sfhl-tester-bar.open .sfhl-tester-body{display:block}
-    .sfhl-tester-input{width:100%;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;box-sizing:border-box;outline:none;background:#fff}
-    .sfhl-tester-input:focus{border-color:#0176d3;box-shadow:0 0 0 2px rgba(1,118,211,.1)}
-    .sfhl-tester-result{margin-top:6px;font-size:11.5px;min-height:20px;display:flex;align-items:center}
     /* Snippet-Vorschau Popup */
     .sfhl-snip-prev{position:fixed;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:12px 14px;z-index:2147483648;width:280px;max-height:220px;overflow:hidden;pointer-events:none;opacity:0;transition:opacity .12s}
     .sfhl-snip-prev.vis{opacity:1}
@@ -1705,14 +1400,13 @@
     /* Hit count badge (Trefferstatistik) */
     .sfhl-hits{font-size:9px;font-weight:700;color:#0176d3;background:#eef4ff;border-radius:99px;padding:1px 5px;flex-shrink:0;cursor:default}
     /* Priority badge */
-    .sfhl-rule-prio{min-width:20px;height:20px;border-radius:4px;background:#f3f4f6;color:#b0b7c3;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:monospace}
+    .sfhl-rule-prio{min-width:34px;height:26px;border-radius:6px;background:#f3f4f6;color:#b0b7c3;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:monospace}
+    /* v4.6.5: Prio direkt eintippbar — löst das Priorisieren über Ordnergrenzen hinweg */
+    .sfhl-rule-prio-inp{width:34px;height:26px;box-sizing:border-box;border:1px solid #cfe3fb;border-radius:6px;background:#eef4ff;color:#0176d3;font-size:13px;font-weight:700;text-align:center;font-family:monospace;padding:0;flex-shrink:0;cursor:text}
+    .sfhl-rule-prio-inp:hover{border-color:#0176d3}
+    .sfhl-rule-prio-inp:focus{outline:none;border-color:#0176d3;background:#fff;box-shadow:0 0 0 2px rgba(1,118,211,.15)}
     .sfhl-row:not(.disabled) .sfhl-rule-prio.has-prio{background:#eef4ff;color:#0176d3}
     /* Category chips */
-    .sfhl-cat-chips{display:flex;flex-wrap:wrap;gap:4px;padding:5px 12px 2px;flex-shrink:0;min-height:0}
-    .sfhl-cat-chips:empty{display:none}
-    .sfhl-cat-chip{padding:2px 9px;border-radius:99px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid #e5e7eb;background:#f9fafb;color:#6b7280;transition:all .12s;white-space:nowrap;user-select:none;line-height:1.7}
-    .sfhl-cat-chip:hover{border-color:#c4b5fd;color:#0176d3}
-    .sfhl-cat-chip.active{background:#eef4ff;border-color:#0176d3;color:#0176d3;font-weight:600}
     /* RF countdown ring */
     .sfhl-rf-ring-wrap{display:flex;flex-direction:column;align-items:center;padding:14px 0 8px;gap:5px}
     .sfhl-rf-ring{position:relative;width:88px;height:88px;opacity:0;transition:opacity .4s}
@@ -1723,7 +1417,7 @@
     .sfhl-rf-ring-lbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;color:#374151}
     .sfhl-rf-ring-status{font-size:11px;color:#9ca3af;font-weight:500}
     .sfhl-set-row2{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12.5px;color:#374151}
-    .sfhl-set-row2 label{min-width:80px;font-size:12px;color:#6b7280;flex-shrink:0}
+    .sfhl-set-row2 label{min-width:128px;font-size:12px;color:#6b7280;flex-shrink:0}
     .sfhl-set-row2 input[type="text"],.sfhl-set-row2 select{flex:1;padding:6px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12.5px}
     .sfhl-set-row2 input:focus,.sfhl-set-row2 select:focus{outline:none;border-color:#0176d3;box-shadow:0 0 0 2px rgba(1,118,211,.1)}
     .sfhl-set-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
@@ -1737,6 +1431,10 @@
     .sfhl-rf-card label{font-size:12px;color:#6b7280;white-space:nowrap}
     .sfhl-rf-card input[type="number"]{width:70px;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;text-align:center;-moz-appearance:textfield}
     .sfhl-rf-card input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none}
+    .sfhl-rf-presets{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+    .sfhl-rf-preset{padding:3px 10px;border-radius:99px;border:1px solid #e5e7eb;background:#fff;font-size:11px;font-weight:500;color:#374151;cursor:pointer;transition:all .12s}
+    .sfhl-rf-preset:hover{background:#eef4ff;border-color:#0176d3;color:#0176d3}
+    .sfhl-rf-preset.active{background:#0176d3;border-color:#0176d3;color:#fff}
     /* Editor always-on toolbar (plain mode too) */
     .sfhl-editor-wrap{border:1px solid #e5e7eb;border-radius:6px;overflow:hidden}
     .sfhl-editor-content{min-height:110px;max-height:200px;overflow-y:auto;padding:8px 10px;font-size:12.5px;line-height:1.6;outline:none;word-break:break-word;font-family:inherit}
@@ -1755,13 +1453,9 @@
     .sfhl-snip-row:hover .sfhl-snip-grip{color:#9ca3af}
     /* Kategorie-Umbenennung (#7) */
     .sfhl-cat-hdr span.sfhl-cat-name{cursor:text}
-    /* Recently Used (#15) */
-    .sfhl-recent-hdr{display:flex;align-items:center;gap:6px;padding:5px 16px;font-size:10px;font-weight:700;color:#0176d3;text-transform:uppercase;letter-spacing:.5px;background:#eef4ff;border-bottom:1px solid #eef4ff}
     /* Lang-Tabs (#34) */
     .sfhl-lang-tab{padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #e5e7eb;background:#fff;color:#9ca3af;transition:all .12s}
     .sfhl-lang-tab.active{background:#eef4ff;border-color:#0176d3;color:#0176d3}
-    /* Share-Button (#35) */
-    .sfhl-ed-share{font-size:11px}
     /* Favoriten-Stern */
     .sfhl-fav{font-size:14px;cursor:pointer;flex-shrink:0;opacity:.35;transition:opacity .15s,color .15s;padding:0 2px;user-select:none;line-height:1}
     .sfhl-fav:hover{opacity:.7}
@@ -1819,17 +1513,18 @@
         </div>
       </div>
       <div class="sfhl-tabs">
-        <div class="sfhl-tab active" data-tab="rules"><span data-i18n="Markierung">Markierung</span> <span class="sfhl-tab-badge sfhl-rules-count">0</span></div>
-        <div class="sfhl-tab" data-tab="snippets"><span data-i18n="Snippets">Snippets</span> <span class="sfhl-tab-badge sfhl-snip-count">0</span></div>
-        <div class="sfhl-tab" data-tab="refresh" data-i18n="Aktualisierung">Aktualisierung</div>
-        <div class="sfhl-tab" data-tab="doku" data-i18n="Doku">Doku</div>
+        <div class="sfhl-tab active" data-tab="rules"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg><span>Markierung</span><span class="sfhl-tab-badge sfhl-rules-count">0</span></div>
+        <div class="sfhl-tab" data-tab="snippets"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg><span>Snippets</span><span class="sfhl-tab-badge sfhl-snip-count">0</span></div>
+        <div class="sfhl-tab" data-tab="doku"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>Doku</span><span class="sfhl-tab-badge sfhl-doku-count-badge">0</span></div>
+        <div class="sfhl-tab" data-tab="refresh"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>Aktualisierung</span></div>
       </div>
     </div>
 
     <!-- ===== Markierung Tab ===== -->
     <div class="sfhl-tab-content active" data-tab="rules">
-      <div class="sfhl-search"><input type="text" placeholder="Regeln durchsuchen\u2026" class="sfhl-search-input"></div>
-      <div class="sfhl-colhdr"><div></div><div>Stichwort</div><div>Farbe</div><div>Aktionen</div></div>
+      <div class="sfhl-feat-bar sfhl-rules-feat-bar"><label class="sfhl-tgl" style="flex-shrink:0"><input type="checkbox" class="sfhl-rules-enabled"><span class="sl"></span></label><span class="sfhl-feat-bar-label">Markierung aktiv</span><span style="flex:1"></span></div>
+      <div class="sfhl-search"><input type="text" placeholder="Regeln durchsuchen\u2026" class="sfhl-search-input"><span class="sfhl-search-clear" role="button" title="L\u00f6schen">\u2715</span></div>
+      <div class="sfhl-colhdr"><div></div><div title="Priorität: 1 = wird zuerst geprüft. Zahl anklicken und ändern zum Umsortieren.">Prio</div><div>Stichwort</div><div>Farbe</div><div>Aktionen</div></div>
       <div class="sfhl-list"></div>
       <div class="sfhl-add-bar"><div class="sfhl-add-toggle" role="button"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Neue Regel</div><div class="sfhl-folder-add-btn" role="button"><svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Ordner</div></div>
       <div class="sfhl-add-form">
@@ -1842,27 +1537,17 @@
           <div style="display:flex;gap:6px"><div class="sfhl-btn-sm sfhl-add-cancel" role="button">Abbrechen</div><div class="sfhl-btn-sm sfhl-btn-primary sfhl-add-save" role="button">Hinzuf\u00fcgen</div></div>
         </div>
       </div>
-      <div class="sfhl-tester-bar">
-        <div class="sfhl-tester-toggle" role="button">
-          <svg viewBox="0 0 16 16"><circle cx="6.5" cy="6.5" r="4"/><line x1="9.5" y1="9.5" x2="14" y2="14"/></svg>Regel testen
-          <svg class="sfhl-tester-chv" viewBox="0 0 12 12" style="width:10px;height:10px;stroke:#9ca3af;fill:none;stroke-width:2;stroke-linecap:round"><polyline points="2,4 6,8 10,4"/></svg>
-        </div>
-        <div class="sfhl-tester-body">
-          <input type="text" class="sfhl-tester-input" placeholder="Beispieltext eingeben\u2026">
-          <div class="sfhl-tester-result"></div>
-        </div>
-      </div>
     </div>
 
     <!-- ===== Snippets Tab ===== -->
     <div class="sfhl-tab-content" data-tab="snippets">
-      <div class="sfhl-search"><input type="text" placeholder="Snippets durchsuchen\u2026" class="sfhl-snip-search-input"></div>
-      <div class="sfhl-cat-chips"></div>
+      <div class="sfhl-feat-bar sfhl-snip-feat-bar"><label class="sfhl-tgl" style="flex-shrink:0"><input type="checkbox" class="sfhl-snip-enabled"><span class="sl"></span></label><span class="sfhl-feat-bar-label">Snippets aktiv</span><span style="flex:1"></span></div>
+      <div class="sfhl-search"><input type="text" placeholder="Snippets durchsuchen\u2026" class="sfhl-snip-search-input"><span class="sfhl-search-clear" role="button" title="L\u00f6schen">\u2715</span></div>
       <div class="sfhl-snip-list"></div>
-      <div class="sfhl-add-bar"><div class="sfhl-add-toggle sfhl-snip-add-toggle" role="button"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Neues Snippet</div></div>
+      <div class="sfhl-add-bar"><div class="sfhl-add-toggle sfhl-snip-add-toggle" role="button"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Neues Snippet</div><div class="sfhl-folder-add-btn sfhl-snip-folder-add-btn" role="button"><svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Ordner</div></div>
       <div class="sfhl-snip-editor" data-mode="add">
-        <div class="sfhl-ed-row"><div class="sfhl-field"><label data-i18n="Trigger">Trigger</label><input type="text" class="sfhl-ed-trigger" placeholder="gruss"></div><div class="sfhl-field"><label data-i18n="Bezeichnung">Bezeichnung</label><input type="text" class="sfhl-ed-label" placeholder="Standardgru\u00df DE"></div></div>
-        <div class="sfhl-field"><label data-i18n="Kategorie">Kategorie</label><input type="text" class="sfhl-ed-category" list="sfhl-cat-list" placeholder="z.B. Begr\u00fc\u00dfung"><datalist id="sfhl-cat-list"></datalist></div>
+        <div class="sfhl-ed-row"><div class="sfhl-field"><label>Trigger</label><input type="text" class="sfhl-ed-trigger" placeholder="gruss"></div><div class="sfhl-field"><label>Bezeichnung</label><input type="text" class="sfhl-ed-label" placeholder="Standardgru\u00df DE"></div></div>
+        <div class="sfhl-field"><label>Ordner</label><input type="text" class="sfhl-ed-category" list="sfhl-cat-list" placeholder="z.B. Begr\u00fc\u00dfung"><datalist id="sfhl-cat-list"></datalist></div>
         <div class="sfhl-field">
           <label style="display:flex;align-items:center;justify-content:space-between">
             <span>Text</span>
@@ -1885,19 +1570,51 @@
               <button class="sfhl-rtb sfhl-rtb-clear" title="Formatierung entfernen"><svg viewBox="0 0 24 24"><path d="M6 13.87A4 4 0 0 1 7.41 6h8.18M18 12v6M6 18h8"/><line x1="2" y1="2" x2="22" y2="22"/></svg></button>
               <div class="sfhl-rte-divider"></div>
               <button class="sfhl-rtb sfhl-rtb-placeholder" title="Platzhalter einf\u00fcgen" style="font-size:11px;font-weight:700;letter-spacing:-.3px">{x}</button>
+              <button class="sfhl-rtb sfhl-rtb-markdown sfhl-rtb-md" title="Markdown importieren (wird in HTML konvertiert)">MD</button>
               <div class="sfhl-rte-divider"></div>
               <select class="sfhl-rtb-snip-insert" title="Vorlage einf\u00fcgen" style="height:26px;font-size:11px;border:1px solid #e5e7eb;border-radius:4px;padding:0 4px;cursor:pointer;max-width:110px"><option value="">+ Vorlage</option></select>
             </div>
             <div class="sfhl-editor-content sfhl-rte-body" contenteditable="true" spellcheck="true" lang="de"></div>
           </div>
-          <textarea class="sfhl-ed-body" style="display:none"></textarea>
+          <textarea class="sfhl-ed-body" style="display:none" wrap="off"></textarea>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px"><span class="sfhl-spell-lang" data-lang="de">🔤 Sprachprüfung: DE</span><span class="sfhl-counter"></span></div>
         <div style="font-size:10px;color:#9ca3af;margin-top:4px">Platzhalter per <b>{x}</b>-Button oben einf\u00fcgen. Cursor-Position: {|}</div>
         <div class="sfhl-var-hint">Eingabe-Variable: <code style="background:#f3e8ff;padding:0 3px;border-radius:2px">{eingabe:Beschriftung}</code> → fragt beim Einfügen nach dem Wert (#45)</div>
         <div class="sfhl-ed-foot">
           <div class="sfhl-btn-sm sfhl-ed-cancel" role="button">Abbrechen</div>
-          <div style="display:flex;gap:6px"><div class="sfhl-btn-sm sfhl-ed-delete danger" role="button" style="display:none;color:#dc2626">L\u00f6schen</div><div class="sfhl-btn-sm sfhl-ed-duplicate" role="button" style="display:none">Duplizieren</div><div class="sfhl-btn-sm sfhl-ed-share" role="button" style="display:none;font-size:11px">Teilen \u2197</div><div class="sfhl-btn-sm sfhl-btn-primary sfhl-ed-save" role="button">Speichern</div></div>
+          <div style="display:flex;gap:6px"><div class="sfhl-btn-sm sfhl-ed-delete danger" role="button" style="display:none;color:#dc2626">L\u00f6schen</div><div class="sfhl-btn-sm sfhl-ed-duplicate" role="button" style="display:none">Duplizieren</div><div class="sfhl-btn-sm sfhl-btn-primary sfhl-ed-save" role="button">Speichern</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Doku Tab ===== -->
+    <div class="sfhl-tab-content" data-tab="doku">
+      <div class="sfhl-feat-bar sfhl-doku-tab-bar">
+        <label class="sfhl-tgl" style="flex-shrink:0"><input type="checkbox" class="sfhl-doku-enabled"><span class="sl"></span></label>
+        <span class="sfhl-feat-bar-label">Lookup aktiv</span>
+        <span style="flex:1"></span>
+      </div>
+      <div class="sfhl-search"><input type="text" placeholder="Doku durchsuchen\u2026" class="sfhl-doku-search-input"><span class="sfhl-search-clear" role="button" title="L\u00f6schen">\u2715</span></div>
+      <div class="sfhl-doku-link-list"></div>
+      <div class="sfhl-add-bar"><div class="sfhl-add-toggle sfhl-doku-new-btn" role="button"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Neuer Eintrag</div><div class="sfhl-folder-add-btn sfhl-doku-folder-add-btn" role="button"><svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Ordner</div></div>
+      <div class="sfhl-doku-form" style="display:none">
+        <div class="sfhl-doku-form-row">
+          <input type="text" class="sfhl-doku-f-key" placeholder="Code-Präfix (z.B. FMR)" maxlength="24">
+          <select class="sfhl-doku-f-type">
+            <option value="root">Produkt-Root</option>
+            <option value="order">Ordercode</option>
+            <option value="serial">Seriennummer</option>
+            <option value="auftrag">Auftrag</option>
+            <option value="free">Suche (immer)</option>
+          </select>
+        </div>
+        <input type="text" class="sfhl-doku-f-label" placeholder="Bezeichnung (max. 100 Zeichen)" maxlength="100">
+        <input type="text" class="sfhl-doku-f-url" placeholder="URL mit %s (z.B. https://example.com/?q=%s)" maxlength="500">
+        <input type="text" class="sfhl-doku-f-cat" list="sfhl-doku-cat-list" placeholder="Ordner (optional)" maxlength="60"><datalist id="sfhl-doku-cat-list"></datalist>
+        <div class="sfhl-doku-form-acts">
+          <div class="sfhl-btn-sm sfhl-doku-f-cancel" role="button">Abbrechen</div>
+          <div class="sfhl-btn-sm sfhl-btn-primary sfhl-doku-f-save" role="button">Speichern</div>
         </div>
       </div>
     </div>
@@ -1907,11 +1624,16 @@
       <div class="sfhl-refresh-body">
         <div class="sfhl-rf-card">
           <h3>Auto-Refresh</h3>
-          <div class="rfr"><label>Status</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-rf-enabled"><span class="sl"></span></span><span class="sfhl-sp" style="margin-left:8px"></span></div>
-          <div class="rfr"><label data-i18n="Intervall">Intervall</label><input type="number" min="5" step="5" class="sfhl-rf-secs" placeholder="60"><label data-i18n="Sekunden">Sekunden</label></div>
-          <div class="sfhl-btn-sm sfhl-btn-primary sfhl-rf-apply" role="button" style="margin-top:6px">\u00dcbernehmen</div>
+          <div class="rfr"><label>Auto-Refresh</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-rf-enabled"><span class="sl"></span></span><span class="sfhl-sp" style="margin-left:8px"></span></div>
+          <div class="rfr"><label>Intervall</label><input type="number" min="5" step="5" class="sfhl-rf-secs" placeholder="60"><label>Sekunden</label></div>
+          <div class="sfhl-rf-presets">
+            <span class="sfhl-rf-preset" data-secs="30">30s</span>
+            <span class="sfhl-rf-preset" data-secs="60">1 min</span>
+            <span class="sfhl-rf-preset" data-secs="120">2 min</span>
+            <span class="sfhl-rf-preset" data-secs="300">5 min</span>
+          </div>
+          <p style="font-size:11px;color:#9ca3af;margin-top:8px;margin-bottom:0">Nur auf Case-Listenseiten aktiv. Countdown erscheint im SF-Refresh-Button.</p>
         </div>
-        <p style="font-size:11px;color:#9ca3af;padding:0 2px">Der Auto-Refresh ist nur auf Case-Listenseiten aktiv. Der Countdown wird direkt im SF-Refresh-Button angezeigt.</p>
         <div class="sfhl-rf-ring-wrap">
           <div class="sfhl-rf-ring">
             <svg viewBox="0 0 100 100"><circle class="sfhl-rf-ring-bg" cx="50" cy="50" r="42"/><circle class="sfhl-rf-ring-prog" cx="50" cy="50" r="42"/></svg>
@@ -1922,83 +1644,58 @@
       </div>
     </div>
 
-    <!-- ===== Ger\u00e4te-Doku Tab ===== -->
-    <div class="sfhl-tab-content" data-tab="doku">
-      <div class="sfhl-settings-body">
-        <div class="sfhl-set-section">
-          <h3 data-i18n="Ger\u00e4te-Doku">Ger\u00e4te-Doku</h3>
-          <div class="sfhl-set-row2"><label data-i18n="Doku-Lookup">Doku-Lookup</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-doku-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Ger\u00e4tecode markieren \u2192 \u201e\ud83d\udcc4 Doku-Links"</span></div>
-          <p style="font-size:11px;color:#9ca3af;margin:2px 0 6px"><span class="sfhl-doku-count">0</span> Link-Vorlagen geladen. Vorlagen werden per Config-Datei importiert (keine im Skript hinterlegt).</p>
-          <div class="sfhl-set-actions">
-            <div class="sfhl-btn-sm sfhl-act-doku-edit" role="button">\u270e Vorlagen bearbeiten</div>
-            <div class="sfhl-btn-sm sfhl-act-doku-import" role="button">\u2191 Importieren</div>
-            <div class="sfhl-btn-sm sfhl-act-doku-export" role="button">\u2193 Exportieren</div>
-            <div class="sfhl-btn-danger sfhl-act-doku-clear" role="button">Leeren</div>
-          </div>
-          <div class="sfhl-doku-ed-wrap" style="display:none">
-            <div class="sfhl-doku-ed"></div>
-            <div class="sfhl-set-actions" style="margin-top:6px">
-              <div class="sfhl-btn-sm sfhl-btn-primary sfhl-act-doku-add" role="button">+ Vorlage</div>
-            </div>
-            <p class="sfhl-de-hint">K\u00fcrzel = Link-Beschriftung (z.\u202fB. BA, TI). URL muss <b>%s</b> enthalten \u2014 wird durch den markierten Code ersetzt. Typ steuert, bei welcher Code-Art die Vorlage erscheint.</p>
-          </div>
-        </div>
-      </div>
-    </div>
     <!-- ===== Einstellungen Tab ===== -->
     <div class="sfhl-tab-content" data-tab="settings">
       <div class="sfhl-settings-body">
         <div class="sfhl-set-section">
-          <h3 data-i18n="Allgemein">Allgemein</h3>
-          <div class="sfhl-set-row2"><label data-i18n="Trigger-Prefix">Trigger-Prefix</label><select class="sfhl-set-prefix">${PREFIXES.map(p=>`<option value="${p}">${p}</option>`).join('')}</select></div>
-          <div class="sfhl-set-row2"><label data-i18n="Dein Name">Dein Name</label><input type="text" class="sfhl-set-uname" placeholder="Max Mustermann"></div>
-          <div class="sfhl-set-row2"><label data-i18n="Default language">Default language</label><select class="sfhl-set-lang"><option value="de">Deutsch</option><option value="en">English</option></select></div>
-          <p style="font-size:11px;color:#9ca3af;margin-top:6px">Tip: Type <code>;;en</code> to temporarily show English snippets, <code>;;de</code> for German. Das Panel öffnet immer auch mit <code>Alt+R</code>.</p>
+          <h3>Allgemein</h3>
+          <div class="sfhl-set-row2"><label>Trigger-Prefix</label><select class="sfhl-set-prefix">${PREFIXES.map(p=>`<option value="${p}">${p}</option>`).join('')}</select></div>
+          <div class="sfhl-set-row2"><label>Dein Name</label><input type="text" class="sfhl-set-uname" placeholder="Max Mustermann"></div>
+          <div class="sfhl-set-row2"><label>Snippet-Sprache</label><select class="sfhl-set-lang"><option value="de">Deutsch</option><option value="en">English</option></select></div>
+          <div class="sfhl-set-row2"><label>Button</label><select class="sfhl-set-btnpos"><option value="floating">Schwebend (unten rechts)</option><option value="header">SF-Kopfleiste</option></select></div>
+          <p style="font-size:11px;color:#9ca3af;margin-top:6px">Tipp: <code>;;en</code> zeigt vorübergehend die EN-Snippet-Varianten, <code>;;de</code> die deutschen. Das Panel öffnet immer auch mit <code>Alt+R</code>.</p>
         </div>
         <div class="sfhl-set-section">
-          <h3 data-i18n="E-Mail Bausteine">E-Mail Bausteine</h3>
-          <div class="sfhl-set-row2"><label data-i18n="Auto-Wrap">Auto-Wrap</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-wrap-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Anrede + Signatur automatisch einf\u00fcgen</span></div>
-          <div class="sfhl-set-row2"><label data-i18n="Anrede">Anrede</label><select class="sfhl-wrap-anrede"></select></div>
-          <div class="sfhl-set-row2"><label data-i18n="Signatur">Signatur</label><select class="sfhl-wrap-sig"></select></div>
+          <h3>E-Mail Bausteine</h3>
+          <div class="sfhl-set-row2"><label>Auto-Wrap</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-wrap-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Anrede + Signatur automatisch einf\u00fcgen</span></div>
+          <div class="sfhl-set-row2"><label>Anrede</label><select class="sfhl-wrap-anrede"></select></div>
+          <div class="sfhl-set-row2"><label>Signatur</label><select class="sfhl-wrap-sig"></select></div>
           <p style="font-size:11px;color:#9ca3af;margin-top:6px">Wenn aktiv, wird beim Einf\u00fcgen eines Snippets automatisch die Anrede davor und die Signatur danach eingef\u00fcgt. Gilt nicht wenn das Snippet selbst die Anrede oder Signatur ist.</p>
         </div>
         <div class="sfhl-set-section">
-          <h3 data-i18n="SLA-Alarm">SLA-Alarm</h3>
-          <div class="sfhl-set-row2"><label data-i18n="Tab-Blinken">Tab-Blinken</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-sla-blink"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Tab-Titel blinkt bei neuem Treffer</span></div>
-          <div class="sfhl-set-row2"><label data-i18n="Ton">Ton</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-sla-sound"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Kurzer Signalton</span></div>
-          <div class="sfhl-set-row2"><label data-i18n="Benachrichtigung">Benachrichtigung</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-sla-notify"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Desktop-Benachrichtigung</span></div>
+          <h3>Liste</h3>
+          <div class="sfhl-set-row2"><label>Farb-Legende</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-legend-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Legende der aktiven Markierungen \u00fcber der Case-Liste</span></div>
+          <div class="sfhl-set-row2"><label>Regel aus Auswahl</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-selrule-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Listentext markieren \u2192 Schaltfl\u00e4che \u201eRegel aus Auswahl"</span></div>
+        </div>
+        <div class="sfhl-set-section">
+          <h3>Karten / Route</h3>
+          <div class="sfhl-set-row2"><label>Meine Adresse</label><input type="text" class="sfhl-set-homeaddr" placeholder="Musterstra\u00dfe 1, 12345 Musterstadt" maxlength="200"></div>
+          <p style="font-size:11px;color:#9ca3af;margin-top:6px">Adresse in Salesforce markieren \u2192 \u201e\ud83d\uddfa\ufe0f GMaps\u201c sucht sie in Google Maps, \u201e\ud83d\ude97 Route\u201c plant die Route von deiner Adresse dorthin. Die Adresse wird nur lokal gespeichert. Beide Shortcuts h\u00e4ngen am \u201eLookup aktiv\u201c-Schalter im Doku-Tab.</p>
+        </div>
+        <div class="sfhl-set-section">
+          <h3>SLA-Alarm</h3>
+          <div class="sfhl-set-row2"><label>Tab-Blinken</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-sla-blink"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Tab-Titel blinkt bei neuem Treffer</span></div>
+          <div class="sfhl-set-row2"><label>Ton</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-sla-sound"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Kurzer Signalton</span></div>
+          <div class="sfhl-set-row2"><label>Benachrichtigung</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-sla-notify"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Desktop-Benachrichtigung</span></div>
           <p style="font-size:11px;color:#9ca3af;margin-top:6px">Greift, wenn der Auto-Refresh einen <b>neuen</b> Treffer einer Regel mit aktiviertem <span style="color:#dc2626">\ud83d\udd14</span>-Alarm findet. Alarm pro Regel \u00fcber das Glocken-Symbol in der Markierungs-Liste schalten.</p>
         </div>
         <div class="sfhl-set-section">
-          <h3 data-i18n="Liste">Liste</h3>
-          <div class="sfhl-set-row2"><label data-i18n="Regel aus Auswahl">Regel aus Auswahl</label><span class="sfhl-tgl"><input type="checkbox" class="sfhl-selrule-enabled"><span class="sl"></span></span><span style="font-size:11px;color:#6b7280;margin-left:6px">Listentext markieren \u2192 Schaltfl\u00e4che \u201eRegel aus Auswahl"</span></div>
-        </div>
-        <div class="sfhl-set-section">
-          <h3 data-i18n="Export">Export</h3>
+          <h3>Backup</h3>
           <div class="sfhl-set-actions">
-            <div class="sfhl-btn-sm sfhl-act-export" role="button" data-i18n="\u2193 Alles exportieren">\u2193 Alles exportieren</div>
-            <div class="sfhl-btn-sm sfhl-act-export-rules" role="button" data-i18n="\u2193 Markierungen">\u2193 Markierungen</div>
-            <div class="sfhl-btn-sm sfhl-act-export-snips" role="button" data-i18n="\u2193 Snippets">\u2193 Snippets</div>
+            <div class="sfhl-btn-sm sfhl-act-export" role="button">\u2193 Alles exportieren</div>
+            <div class="sfhl-btn-sm sfhl-act-export-rules" role="button">\u2193 Markierungen</div>
+            <div class="sfhl-btn-sm sfhl-act-export-snips" role="button">\u2193 Snippets</div>
+            <div class="sfhl-btn-sm sfhl-act-export-doku" role="button">\u2193 Doku-Links</div>
+            <div class="sfhl-btn-sm sfhl-act-import" role="button">\u2191 Datei importieren</div>
           </div>
+          <p style="font-size:11px;color:#9ca3af;margin-top:6px">\u201eAlles exportieren\u201c sichert Regeln, Snippets, Doku-Links und Einstellungen. Import ersetzt die bestehenden Daten.</p>
         </div>
         <div class="sfhl-set-section">
-          <h3 data-i18n="Import">Import</h3>
+          <h3>Zur\u00fccksetzen</h3>
           <div class="sfhl-set-actions">
-            <div class="sfhl-btn-sm sfhl-act-import" role="button" data-i18n="\u2191 Datei importieren">\u2191 Datei importieren</div>
-          </div>
-          <p style="font-size:11px;color:#9ca3af;margin-top:6px">Importierte Regeln/Snippets ersetzen die bestehenden.</p>
-        </div>
-        <div class="sfhl-set-section">
-          <h3 data-i18n="Sicherung">Sicherung</h3>
-          <p style="font-size:11px;color:#9ca3af;margin:0 0 8px">Vor jedem Import oder Zur\u00fccksetzen wird der vorherige Stand automatisch gesichert (die letzten 3). Wiederherstellen sichert vorher den aktuellen Stand.</p>
-          <div class="sfhl-backup-list"></div>
-        </div>
-        <div class="sfhl-set-section">
-          <h3 data-i18n="Zur\u00fccksetzen">Zur\u00fccksetzen</h3>
-          <div class="sfhl-set-actions">
-            <div class="sfhl-btn-danger sfhl-act-reset-rules" role="button" data-i18n="Markierungen zur\u00fccksetzen">Markierungen zur\u00fccksetzen</div>
-            <div class="sfhl-btn-danger sfhl-act-reset-snips" role="button" data-i18n="Snippets zur\u00fccksetzen">Snippets zur\u00fccksetzen</div>
-            <div class="sfhl-btn-danger sfhl-act-reset" role="button" data-i18n="Alles zur\u00fccksetzen">Alles zur\u00fccksetzen</div>
+            <div class="sfhl-btn-danger sfhl-act-reset-rules" role="button">Markierungen zur\u00fccksetzen</div>
+            <div class="sfhl-btn-danger sfhl-act-reset-snips" role="button">Snippets zur\u00fccksetzen</div>
+            <div class="sfhl-btn-danger sfhl-act-reset" role="button">Alles zur\u00fccksetzen</div>
           </div>
         </div>
       </div>
@@ -2016,7 +1713,8 @@
               <svg class="sfhl-help-chv" viewBox="0 0 12 12"><polyline points="2,4 6,8 10,4"/></svg>
             </div>
             <div class="sfhl-help-bdy"><div class="sfhl-help-inn">
-              <p>Dieses Tool erweitert Salesforce Lightning um drei Hauptfunktionen: <b>Zeilen-Markierung</b> in Case-Listen, <b>Text-Snippets</b> mit Platzhaltern und <b>Auto-Refresh</b> mit Countdown.</p>
+              <p>Dieses Tool erweitert Salesforce Lightning um vier Hauptfunktionen: <b>Zeilen-Markierung</b> in Case-Listen, <b>Text-Snippets</b> mit Platzhaltern, <b>Ger\u00e4te-Doku-Lookup</b> und <b>Auto-Refresh</b> mit Countdown.</p>
+              <p>Die Tabs <b>Markierung</b>, <b>Snippets</b> und <b>Doku</b> sind gleich aufgebaut: oben ein Ein/Aus-Schalter f\u00fcr die ganze Funktion und ein Suchfeld, unten die Buttons zum Anlegen von Eintr\u00e4gen und Ordnern.</p>
               <p>Das Panel \u00f6ffnet sich mit dem <b>SF Tools</b>-Button unten rechts oder mit <code>Alt+R</code>. Die Breite l\u00e4sst sich am linken Rand per Drag &amp; Drop ver\u00e4ndern.</p>
             </div></div>
           </div>
@@ -2029,6 +1727,7 @@
             </div>
             <div class="sfhl-help-bdy"><div class="sfhl-help-inn">
               <p>Markiert Zeilen in Case-Listen farbig. Regeln werden in der Reihenfolge gepr\u00fcft \u2014 die <b>erste passende Regel</b> gewinnt.</p>
+              <p><b>Priorit\u00e4t:</b> Die Zahl links neben jeder Regel zeigt die Pr\u00fcf-Reihenfolge (1 = zuerst). Zahl anklicken, neue Position eintippen, Enter \u2014 die Regel wird global umsortiert, auch \u00fcber Ordnergrenzen hinweg.</p>
               <table class="sfhl-help-tbl">
                 <tr><th>Operator</th><th>Bedeutung</th><th>Beispiel</th></tr>
                 <tr><td><code>Begriff</code></td><td>Textsuche (case-insensitive)</td><td><code>dringend</code></td></tr>
@@ -2036,8 +1735,13 @@
                 <tr><td><code>A | B</code></td><td>ODER: mindestens einer</td><td><code>urgent | eilig</code></td></tr>
                 <tr><td><code>!text</code></td><td>NICHT: darf nicht vorkommen</td><td><code>SLA + !closed</code></td></tr>
                 <tr><td><code>/regex/i</code></td><td>Regul\u00e4rer Ausdruck</td><td><code>/Fehler\s*\d+/i</code></td></tr>
+                <tr><td><code>Spalte=Wert</code></td><td>Nur in dieser Spalte suchen</td><td><code>Status=Neu</code></td></tr>
               </table>
+              <p style="font-size:11px;color:#9ca3af"><code>Spalte=Wert</code> pr\u00fcft nur die Zelle, deren Spalten\u00fcberschrift den Namen enth\u00e4lt \u2014 kombinierbar: <code>Status=Neu + dringend</code>.</p>
               <p><b>Ordner:</b> Regeln lassen sich in Ordnern gruppieren. \u201eOrdner\u201c-Button erstellt einen neuen Ordner, Regeln per Drag &amp; Drop hineinziehen.</p>
+              <p><b>Regel aus Auswahl:</b> Text in der Case-Liste markieren \u2192 die Schaltfl\u00e4che \u201eRegel aus Auswahl\u201c legt daraus direkt eine Regel an (abschaltbar unter Einstellungen \u2192 Liste).</p>
+              <p><b>SLA-Alarm:</b> Das Glocken-Symbol an einer Regel meldet neue Treffer nach dem Auto-Refresh \u2014 per Tab-Blinken, Ton oder Desktop-Benachrichtigung (Einstellungen \u2192 SLA-Alarm).</p>
+              <p><b>Farb-Legende:</b> Zeigt die aktiven Markierungen \u00fcber der Case-Liste (Einstellungen \u2192 Liste).</p>
             </div></div>
           </div>
 
@@ -2056,15 +1760,17 @@
                 <tr><th>Platzhalter</th><th>Wert</th></tr>
                 <tr><td><code>{name}</code></td><td>Dein Name (aus Einstellungen)</td></tr>
                 <tr><td><code>{datum}</code> / <code>{uhrzeit}</code></td><td>Heutiges Datum / Uhrzeit</td></tr>
-                <tr><td><code>{case}</code></td><td>Vorgangsnummer</td></tr>
+                <tr><td><code>{case}</code> / <code>{betreff}</code></td><td>Vorgangsnummer / Betreff</td></tr>
                 <tr><td><code>{anrede}</code> / <code>{nachname}</code></td><td>Anrede / Nachname des Kontakts</td></tr>
+                <tr><td><code>{kontakt}</code> / <code>{telefon}</code></td><td>Voller Name / Telefon des Kontakts</td></tr>
                 <tr><td><code>{firma}</code></td><td>Firmenname (Account)</td></tr>
                 <tr><td><code>{seriennummer}</code></td><td>Seriennummer aus dem Case</td></tr>
                 <tr><td><code>{|}</code></td><td>Cursor-Position nach Einf\u00fcgen</td></tr>
                 <tr><td><code>{eingabe:Text}</code></td><td>Fragt interaktiv nach dem Wert</td></tr>
                 <tr><td><code>{!Case.Subject}</code></td><td>SF Merge-Feld (DOM-basiert)</td></tr>
               </table>
-              <p><b>Auto-Wrap</b> (in Einstellungen): F\u00fcgt automatisch Anrede und Signatur um jeden Textbaustein. Weitere Features: Favoriten, Kategorien, Nutzungsz\u00e4hler, Duplizieren, Teilen via Link.</p>
+              <p><b>Auto-Wrap</b> (in Einstellungen): F\u00fcgt automatisch Anrede und Signatur um jeden Textbaustein.</p>
+              <p><b>Ordner:</b> Snippets lassen sich \u00fcber das Feld \u201eOrdner\u201c im Editor oder den \u201eOrdner\u201c-Button gruppieren. Sortieren per \u25b2\u25bc, Umbenennen per Doppelklick, leere Ordner l\u00f6schen per \u2715. Weitere Features: Favoriten, Duplizieren.</p>
             </div></div>
           </div>
 
@@ -2086,18 +1792,37 @@
 
           <div class="sfhl-help-sec">
             <div class="sfhl-help-hdr">
+              <div class="sfhl-help-dot" style="background:#14b8a6"></div>
+              <span class="sfhl-help-lbl">Ger\u00e4te-Doku-Lookup</span>
+              <svg class="sfhl-help-chv" viewBox="0 0 12 12"><polyline points="2,4 6,8 10,4"/></svg>
+            </div>
+            <div class="sfhl-help-bdy"><div class="sfhl-help-inn">
+              <p>Text in Salesforce markieren (z.B. Ordercode oder Seriennummer) \u2192 ein Popup zeigt passende Doku-Links.</p>
+              <p>Im Tab <b>Doku</b> werden die Link-Vorlagen gepflegt: <b>+ Eintrag</b> erstellt eine Vorlage (Code-Pr\u00e4fix, Typ, Bezeichnung, URL mit <code>%s</code> als Platzhalter). Eintr\u00e4ge lassen sich in <b>Ordner</b> gruppieren und per \u25b2\u25bc sortieren.</p>
+              <p>Jeder Eintrag l\u00e4sst sich \u00fcber seinen Schalter einzeln deaktivieren \u2014 er bleibt gespeichert, taucht aber nicht mehr im Popup auf. Der Lookup funktioniert auch im E-Mail-Editor.</p>
+              <p><b>Adress-Shortcuts:</b> Eine Adresse markieren \u2192 \u201e\ud83d\uddfa\ufe0f GMaps\u201c sucht sie in Google Maps, \u201e\ud83d\ude97 Route\u201c plant die Route von deiner eigenen Adresse dorthin (Startadresse unter Einstellungen \u2192 Karten / Route hinterlegen). Beide h\u00e4ngen am \u201eLookup aktiv\u201c-Schalter.</p>
+              <p>Export der Doku-Links: Einstellungen \u2192 Backup \u2192 \u201e\u2193 Doku-Links\u201c. Import \u00fcber \u201e\u2191 Datei importieren\u201c.</p>
+            </div></div>
+          </div>
+
+          <div class="sfhl-help-sec">
+            <div class="sfhl-help-hdr">
               <div class="sfhl-help-dot" style="background:#8b5cf6"></div>
-              <span class="sfhl-help-lbl">Einstellungen &amp; Export</span>
+              <span class="sfhl-help-lbl">Einstellungen &amp; Backup</span>
               <svg class="sfhl-help-chv" viewBox="0 0 12 12"><polyline points="2,4 6,8 10,4"/></svg>
             </div>
             <div class="sfhl-help-bdy"><div class="sfhl-help-inn">
               <ul>
                 <li><b>Trigger-Prefix</b> \u2014 z.B. <code>;;</code>, <code>::</code>, <code>//</code></li>
                 <li><b>Dein Name</b> \u2014 wird f\u00fcr <code>{name}</code> verwendet</li>
-                <li><b>Default language</b> \u2014 Snippet-Variante DE/EN beim Einf\u00fcgen</li>
+                <li><b>Snippet-Sprache</b> \u2014 Snippet-Variante DE/EN beim Einf\u00fcgen</li>
                 <li><b>Auto-Wrap</b> \u2014 Anrede/Signatur automatisch ein-/ausschalten</li>
-                <li><b>Export</b> \u2014 Regeln + Snippets als JSON-Datei sichern</li>
-                <li><b>Import</b> \u2014 JSON-Datei einlesen (ersetzt bestehende Daten)</li>
+                <li><b>Button</b> \u2014 Panel-Button schwebend (unten rechts) oder in der SF-Kopfleiste</li>
+                <li><b>Liste</b> \u2014 Farb-Legende und \u201eRegel aus Auswahl\u201c ein-/ausschalten</li>
+                <li><b>Karten / Route</b> \u2014 eigene Adresse als Startpunkt f\u00fcr den \u201eRoute\u201c-Shortcut (nur lokal gespeichert)</li>
+                <li><b>SLA-Alarm</b> \u2014 Tab-Blinken, Ton oder Desktop-Benachrichtigung bei neuen Treffern</li>
+                <li><b>Alles exportieren</b> \u2014 Regeln, Snippets, Doku-Links, Ordner und Einstellungen als JSON-Datei sichern</li>
+                <li><b>Import</b> \u2014 zeigt vor dem Einlesen, was die Datei enth\u00e4lt. <b>Ersetzen</b> \u00fcberschreibt, <b>Hinzuf\u00fcgen</b> erg\u00e4nzt nur Neues (praktisch zum Teilen mit Kollegen). Per Toast-Button r\u00fcckg\u00e4ngig machbar</li>
               </ul>
             </div></div>
           </div>
@@ -2115,7 +1840,6 @@
                 <tr><td><code>Esc</code></td><td>Panel oder Dropdown schlie\u00dfen</td></tr>
                 <tr><td><code>;;</code></td><td>Snippet-Dropdown \u00f6ffnen (in Textfeldern)</td></tr>
                 <tr><td><code>\u2191 \u2193</code></td><td>Im Dropdown navigieren</td></tr>
-                <tr><td><code>Alt+1</code>\u2026<code>9</code></td><td>Eintrag 1\u20139 direkt einf\u00fcgen</td></tr>
                 <tr><td><code>Enter</code> / <code>Tab</code></td><td>Snippet einf\u00fcgen</td></tr>
               </table>
             </div></div>
@@ -2176,7 +1900,6 @@
   const $ = s => panel.querySelector(s);
   const listEl      = $('.sfhl-list');
   const snipListEl  = $('.sfhl-snip-list');
-  const catChipsEl  = $('.sfhl-cat-chips');
   const searchInput = $('.sfhl-search-input');
   const snipSearch  = $('.sfhl-snip-search-input');
   const addForm     = $('.sfhl-add-form');
@@ -2197,10 +1920,10 @@
   const slaBlinkCb  = $('.sfhl-sla-blink');
   const slaSoundCb  = $('.sfhl-sla-sound');
   const slaNotifyCb = $('.sfhl-sla-notify');
+  const legendCb    = $('.sfhl-legend-enabled');
   const selRuleCb   = $('.sfhl-selrule-enabled');
-  const dokuCb      = $('.sfhl-doku-enabled');
-  const dokuCountEl = $('.sfhl-doku-count');
-
+  const btnPosSel   = $('.sfhl-set-btnpos');
+  const setHomeAddr = $('.sfhl-set-homeaddr');
   rfInput.value = String(loadRefreshSecs());
   rfCb.checked = loadRefreshOn();
   setPrefix.value = loadPrefix();
@@ -2210,40 +1933,22 @@
   slaBlinkCb.checked = loadSla('blink');
   slaSoundCb.checked = loadSla('sound');
   slaNotifyCb.checked = loadSla('notify');
+  legendCb.checked = loadLegendOn();
   selRuleCb.checked = loadSelRuleOn();
-  dokuCb.checked = loadDokuOn();
-  function updateDokuCount() { if (dokuCountEl) dokuCountEl.textContent = String(loadDokuLinks().length); }
-  // v4.7.0 Vorlagen-Editor (Stufe 1.5): In-UI bearbeiten statt nur Import.
-  const DOKU_TYPES = [['root','Produkt-Root'],['serial','Seriennummer'],['auftrag','Auftragsnummer'],['order','Ordercode'],['free','Suche']];
-  let dokuEditArr = null;
-  function renderDokuEditor() {
-    const box = $('.sfhl-doku-ed'); if (!box) return;
-    if (!dokuEditArr) dokuEditArr = loadDokuLinks();
-    if (!dokuEditArr.length) { box.innerHTML = '<p class="sfhl-de-hint" style="margin:6px 2px">Noch keine Vorlagen — „+ Vorlage" anlegen oder oben eine Config importieren.</p>'; return; }
-    box.innerHTML = dokuEditArr.map(e => {
-      const opts = DOKU_TYPES.map(([v,l]) => `<option value="${v}"${e.type===v?' selected':''}>${escH(l)}</option>`).join('');
-      const bad = !/%s/.test(e.url || '');
-      return `<div class="sfhl-de-card" data-id="${escH(e.id)}">
-        <div class="sfhl-de-line">
-          <input class="sfhl-de-key" type="text" value="${escH(e.key)}" placeholder="Kürzel" maxlength="24">
-          <select class="sfhl-de-type">${opts}</select>
-          <div class="sfhl-de-del" role="button" title="Vorlage löschen">✕</div>
-        </div>
-        <div class="sfhl-de-line"><input class="sfhl-de-label" type="text" value="${escH(e.label)}" placeholder="Beschriftung (optional)" maxlength="100"></div>
-        <div class="sfhl-de-line"><input class="sfhl-de-url${bad?' sfhl-de-bad':''}" type="text" value="${escH(e.url)}" placeholder="https://…%s…" maxlength="500"></div>
-      </div>`;
-    }).join('');
-  }
-  updateDokuCount();
+  btnPosSel.value = loadBtnPos();
+  setHomeAddr.value = loadHomeAddr();
 
-  // Wrap-Dropdowns befüllen
+  // Wrap-Dropdowns befüllen — FIX v4.6.4: wird jetzt bei jedem renderSnippets()
+  // aufgerufen (vorher nur bei Init/Prefix-Wechsel → neue/umbenannte Snippets fehlten
+  // bis F5). Fehlt das gespeicherte Trigger-Snippet, wird das sichtbar markiert.
   function updateWrapDropdowns() {
     const prefix = loadPrefix();
     const opts = SNIPPETS.map(s => `<option value="${escH(s.trigger)}">${escH(prefix+s.trigger)} \u2014 ${escH(s.label)}</option>`).join('');
-    wrapAnrSel.innerHTML = opts;
-    wrapSigSel.innerHTML = opts;
-    wrapAnrSel.value = loadWrapAnrede();
-    wrapSigSel.value = loadWrapSignatur();
+    for (const [sel, val] of [[wrapAnrSel, loadWrapAnrede()], [wrapSigSel, loadWrapSignatur()]]) {
+      const exists = SNIPPETS.some(s => s.trigger === val);
+      sel.innerHTML = (exists ? '' : `<option value="${escH(val)}">⚠ ${escH(prefix+val)} — Snippet fehlt</option>`) + opts;
+      sel.value = val;
+    }
   }
 
   // ===== Tab switching =====
@@ -2255,6 +1960,7 @@
     snipEditor.classList.remove('vis');
     panel.querySelectorAll('.sfhl-add-bar').forEach(b => b.style.display = 'flex');
     addForm.classList.remove('vis');
+    panel.querySelector('.sfhl-doku-form').style.display = 'none';
   }
   panel.querySelectorAll('.sfhl-tab').forEach(tab => { tab.onclick = () => switchTab(tab.dataset.tab); });
   $('.sfhl-settings-btn').onclick = () => {
@@ -2279,13 +1985,11 @@
     $('.sfhl-snip-count').textContent = String(SNIPPETS.length);
   }
   updateBadges();
-  applyTranslations();
 
   // ===== Panel open/close =====
   let activeSwatch = null;
-  function openPanel() { panel.classList.add('open'); backdrop.classList.add('vis'); }
-  function closePanel() { panel.classList.remove('open'); backdrop.classList.remove('vis'); closeOF(); closePalette(); }
-  function closeOF() { }  // no-op, overflow menu removed
+  function openPanel() { panel.classList.add('open'); backdrop.classList.add('vis'); applyPanelMinW(); }
+  function closePanel() { panel.classList.remove('open'); backdrop.classList.remove('vis'); closePalette(); }
   function closePalette() { paletteEl.classList.remove('vis'); activeSwatch = null; }
 
   updatePill();
@@ -2305,16 +2009,39 @@
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closePanel(); closeDropdown(); }
     // QF3: !e.ctrlKey — sonst feuert AltGr+R (= Ctrl+Alt+R auf DE-Tastaturen) das Panel
-    if (e.altKey && !e.ctrlKey && e.key.toLowerCase() === 'r') { e.preventDefault(); panel.classList.contains('open') ? closePanel() : openPanel(); }
+    // FIX v4.6.4: zusätzlich e.code prüfen — auf macOS liefert Alt+R '®' als e.key
+    if (e.altKey && !e.ctrlKey && (e.key.toLowerCase() === 'r' || e.code === 'KeyR')) { e.preventDefault(); panel.classList.contains('open') ? closePanel() : openPanel(); }
   });
+  // FIX v4.6.5: SF-Globalkürzel (Omni-Channel 'o', Edit 'e', usw.) dürfen nicht feuern,
+  // wenn der Fokus im Panel liegt. Capture-Phase auf *window* — window ist die erste
+  // Station im Capture-Pfad, also vor allen document-Level-Listenern von Salesforce,
+  // unabhängig davon wann diese registriert wurden.
+  window.addEventListener('keydown', e => {
+    if (!panel.contains(e.target)) return;
+    if (e.key === 'Escape') { closePanel(); closeDropdown(); }
+    if (e.altKey && !e.ctrlKey && (e.key.toLowerCase() === 'r' || e.code === 'KeyR')) { e.preventDefault(); closePanel(); }
+    e.stopImmediatePropagation();
+  }, true);
 
-  // Resize
+  // Resize — Mindestbreite dynamisch: alle Tabs müssen sichtbar bleiben
+  const tabsRowEl = panel.querySelector('.sfhl-tabs');
+  function minPanelW() {
+    let w = 34;
+    tabsRowEl.querySelectorAll('.sfhl-tab').forEach(t => { w += t.offsetWidth; });
+    return Math.max(340, Math.min(700, w));
+  }
+  function applyPanelMinW() {
+    const m = minPanelW();
+    panel.style.minWidth = m + 'px';
+    if (panel.offsetWidth < m) panel.style.width = m + 'px';
+  }
   const savedW = parseInt(localStorage.getItem(LS_PANEL_W), 10);
   if (savedW >= 340 && savedW <= 700) panel.style.width = savedW + 'px';
   const resizeHandle = panel.querySelector('.sfhl-resize');
   resizeHandle.addEventListener('mousedown', e => {
     e.preventDefault(); panel.classList.add('resizing');
-    const onMove = ev => { panel.style.width = Math.max(340, Math.min(700, window.innerWidth - ev.clientX)) + 'px'; };
+    const minW = minPanelW();
+    const onMove = ev => { panel.style.width = Math.max(minW, Math.min(700, window.innerWidth - ev.clientX)) + 'px'; };
     const onUp = () => { panel.classList.remove('resizing'); localStorage.setItem(LS_PANEL_W, String(parseInt(panel.style.width,10))); document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp); };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
@@ -2325,88 +2052,200 @@
   $('.sfhl-act-export-rules').onclick  = () => doExport('rules');
   $('.sfhl-act-export-snips').onclick  = () => doExport('snips');
   $('.sfhl-act-import').onclick = () => { fileInput.value = ''; fileInput.click(); };
-  // v4.6.0 Geräte-Doku-Lookup
-  dokuCb.onchange = () => { saveDokuOn(dokuCb.checked); toast(dokuCb.checked ? 'Doku-Lookup an' : 'Doku-Lookup aus', 'info'); };
-  $('.sfhl-act-doku-export').onclick = () => {
+  // v4.6.6: Doku-Export jetzt in den Einstellungen (Backup-Sektion); Import läuft
+  // über den zentralen "Datei importieren" — der versteht das {dokuLinks:[...]}-Format.
+  $('.sfhl-act-export-doku').onclick = () => {
     try {
       const dt=new Date(), pad=n=>String(n).padStart(2,'0'), ds=`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
-      const blob = new Blob([JSON.stringify({ dokuLinks: loadDokuLinks() }, null, 2)], { type:'application/json' });
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`sfhl_doku_links_${ds}.json`;
+      const blob = new Blob([JSON.stringify({ dokuLinks: loadDokuLinks(), dokuCatOrder: loadDokuCatOrder() }, null, 2)], { type:'application/json' });
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`sfhl_doku_links_${ds}.txt`;
       document.body.appendChild(a); a.click(); URL.revokeObjectURL(a.href); a.remove();
       toast('Doku-Links exportiert','success');
     } catch { toast('Export fehlgeschlagen','error'); }
   };
-  $('.sfhl-act-doku-import').onclick = () => {
-    const inp=document.createElement('input'); inp.type='file'; inp.accept='.json,.txt';
-    inp.onchange = async ev => {
-      const f=ev.target.files?.[0]; if(!f) return;
-      try {
-        const raw=JSON.parse(await f.text());
-        const arr=Array.isArray(raw)?raw:(raw.dokuLinks||raw.links||null);
-        if(!Array.isArray(arr)){ toast('Kein gültiges Doku-Link-Format','error',3500); return; }
-        const TYPES=['root','serial','auftrag','order','free'];
-        const clean=arr.map(e=>({ id:uid(), key:String(e.key||'').slice(0,24), label:String(e.label||'').slice(0,100), type:TYPES.includes(e.type)?e.type:'root', url:String(e.url||'').slice(0,500) })).filter(e=>e.url && /%s/.test(e.url));
-        saveDokuLinks(clean); dokuEditArr = null; updateDokuCount(); renderDokuEditor();
-        toast(`${clean.length} Doku-Links importiert`,'success');
-      } catch { toast('Ungültiges Format','error',3500); }
-    };
-    inp.click();
-  };
-  $('.sfhl-act-doku-clear').onclick = () => {
-    if(!confirm(t('Alle Doku-Link-Vorlagen löschen?'))) return;
-    saveDokuLinks([]); dokuEditArr = null; updateDokuCount(); renderDokuEditor(); toast('Doku-Links geleert','info');
-  };
-  // v4.7.0 Vorlagen-Editor: Aufklappen, Hinzufügen, Inline-Bearbeiten, Löschen
-  const dokuEdWrap = $('.sfhl-doku-ed-wrap');
-  $('.sfhl-act-doku-edit').onclick = () => {
-    const open = dokuEdWrap.style.display !== 'none';
-    if (open) { dokuEdWrap.style.display = 'none'; return; }
-    renderDokuEditor(); dokuEdWrap.style.display = '';
-  };
-  $('.sfhl-act-doku-add').onclick = () => {
-    if (!dokuEditArr) dokuEditArr = loadDokuLinks();
-    dokuEditArr.push({ id:uid(), key:'', label:'', type:'root', url:'' });
-    saveDokuLinks(dokuEditArr); updateDokuCount(); renderDokuEditor();
-    const box = $('.sfhl-doku-ed'); const last = box && box.querySelector('.sfhl-de-card:last-child .sfhl-de-key'); if (last) last.focus();
-  };
-  function dokuEdEntry(target) {
-    const card = target.closest('.sfhl-de-card'); if (!card || !dokuEditArr) return null;
-    return dokuEditArr.find(x => x.id === card.dataset.id) || null;
+  // ===== Doku Tab =====
+  const DOKU_TYPES = ['root','serial','auftrag','order','free'];
+  const DOKU_TYPE_LABELS = { root:'Produkt-Root', order:'Ordercode', serial:'Seriennummer', auftrag:'Auftrag', free:'Suche' };
+  const dokuTab = $('.sfhl-tab-content[data-tab="doku"]');
+  const dokuForm = dokuTab.querySelector('.sfhl-doku-form');
+  const dokuLinkList = dokuTab.querySelector('.sfhl-doku-link-list');
+  const dokuEnabledCb = dokuTab.querySelector('.sfhl-doku-enabled');
+  const dokuFKey = dokuTab.querySelector('.sfhl-doku-f-key');
+  const dokuFType = dokuTab.querySelector('.sfhl-doku-f-type');
+  const dokuFLabel = dokuTab.querySelector('.sfhl-doku-f-label');
+  const dokuFUrl = dokuTab.querySelector('.sfhl-doku-f-url');
+  const dokuFCat = dokuTab.querySelector('.sfhl-doku-f-cat');
+  let _dokuEditId = null;
+
+  function _makeDokuEntry(lnk) {
+    const el = document.createElement('div');
+    el.className = 'sfhl-doku-entry' + (lnk.enabled ? '' : ' disabled'); el.dataset.dokuId = lnk.id;
+    const eyeSvg = lnk.enabled ? '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" stroke="none"><ellipse cx="12" cy="12" rx="3.5" ry="3.5"/><path d="M1 12C3 7 7 4 12 4s9 3 11 8c-2 5-6 8-11 8S3 17 1 12z" fill="none" stroke="currentColor" stroke-width="2"/></svg>' : '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="2" x2="22" y2="22"/><path d="M6.7 6.7A10 10 0 0 0 1 12c2 5 6 8 11 8 2.3 0 4.4-.7 6.1-1.9M9.9 4.2A10 10 0 0 1 12 4c5 0 9 3 11 8a10 10 0 0 1-2.1 3.3"/></svg>';
+    el.innerHTML = `<div class="sfhl-doku-entry-top"><span class="sfhl-doku-entry-key">${escH(lnk.key)}</span><span class="sfhl-doku-entry-type">${escH(DOKU_TYPE_LABELS[lnk.type]||lnk.type)}</span><span class="sfhl-doku-entry-label">${escH(lnk.label)}</span><div class="sfhl-doku-entry-acts"><span class="sfhl-ra ${lnk.enabled?'toggle-on':'toggle-off'} sfhl-doku-toggle" title="${lnk.enabled?'Deaktivieren':'Aktivieren'}">${eyeSvg}${lnk.enabled?'An':'Aus'}</span><span class="sfhl-doku-entry-edit" title="Bearbeiten"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span><span class="sfhl-doku-entry-del" title="Löschen"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></span></div></div><div class="sfhl-doku-entry-url">${escH(lnk.url)}</div>`;
+    el.querySelector('.sfhl-doku-toggle').onclick = () => { const arr = loadDokuLinks(); const x = arr.find(x => x.id === lnk.id); if(x){ x.enabled = !x.enabled; saveDokuLinks(arr); renderDokuLinks(); } };
+    el.querySelector('.sfhl-doku-entry-edit').onclick = () => openDokuForm(lnk);
+    el.querySelector('.sfhl-doku-entry-del').onclick = () => { saveDokuLinks(loadDokuLinks().filter(x => x.id !== lnk.id)); renderDokuLinks(); };
+    return el;
   }
-  $('.sfhl-doku-ed').addEventListener('input', e => {
-    const it = dokuEdEntry(e.target); if (!it) return;
-    if (e.target.matches('.sfhl-de-key')) it.key = e.target.value;
-    else if (e.target.matches('.sfhl-de-label')) it.label = e.target.value;
-    else if (e.target.matches('.sfhl-de-url')) { it.url = e.target.value; e.target.classList.toggle('sfhl-de-bad', !/%s/.test(it.url)); }
-    else return;
-    saveDokuLinks(dokuEditArr); updateDokuCount();
+  function _updateDokuCatDatalist() {
+    const dl = document.getElementById('sfhl-doku-cat-list'); if (!dl) return;
+    const cats = [...new Set(loadDokuLinks().map(e => e.category).filter(Boolean))].sort((a,b) => a.localeCompare(b,'de'));
+    dl.innerHTML = cats.map(c => `<option value="${escH(c)}">`).join('');
+  }
+
+  function renderDokuLinks() {
+    const _dokuST = (typeof dokuSearchTerm !== 'undefined') ? dokuSearchTerm : '';
+    const links = loadDokuLinks().filter(l => !_dokuST || l.key.toLowerCase().includes(_dokuST) || l.label.toLowerCase().includes(_dokuST) || l.url.toLowerCase().includes(_dokuST));
+    const badge = $('.sfhl-doku-count-badge');
+    if (badge) badge.textContent = String(loadDokuLinks().length);
+    dokuLinkList.innerHTML = '';
+    _updateDokuCatDatalist();
+    if (!links.length) {
+      const dokuCatOrder = loadDokuCatOrder();
+      if (dokuCatOrder.length === 0) {
+        dokuLinkList.innerHTML = '<div class="sfhl-doku-empty">Keine Einträge. Klicke "+ Eintrag" um einen hinzuzufügen.</div>';
+        return;
+      }
+    }
+    const frag = document.createDocumentFragment();
+    // Gruppieren nach Ordner
+    const dokuCatOrder = loadDokuCatOrder();
+    const catMap = new Map();
+    for (const lnk of links) {
+      const cat = lnk.category || '';
+      if (!catMap.has(cat)) catMap.set(cat, []);
+      catMap.get(cat).push(lnk);
+    }
+    // Leere Ordner aus catOrder anzeigen
+    for (const name of dokuCatOrder) { if (name && !catMap.has(name)) catMap.set(name, []); }
+    const hasCats = catMap.size > 1 || (catMap.size === 1 && !catMap.has(''));
+    if (!hasCats) {
+      // Keine Ordner — flache Liste
+      for (const lnk of links) frag.appendChild(_makeDokuEntry(lnk));
+    } else {
+      const orderedCats = [...catMap.keys()].sort((a, b) => {
+        if (!a) return 1; if (!b) return -1;
+        const ia = dokuCatOrder.indexOf(a), ib = dokuCatOrder.indexOf(b);
+        return ((ia === -1 ? 1e9 : ia) - (ib === -1 ? 1e9 : ib)) || a.localeCompare(b, 'de');
+      });
+      for (const cat of orderedCats) {
+        const catLinks = catMap.get(cat);
+        const isEmpty = catLinks.length === 0;
+        const ch = document.createElement('div');
+        ch.className = 'sfhl-cat-hdr'; ch.dataset.dokuCat = cat || '';
+        const mvBtns = cat ? `<span class="sfhl-mv sfhl-doku-cat-up" role="button" title="Ordner nach oben">▲</span><span class="sfhl-mv sfhl-doku-cat-down" role="button" title="Ordner nach unten">▼</span>` : '';
+        const delBtn = (cat && isEmpty) ? '<span class="sfhl-cat-del sfhl-doku-cat-del" role="button" title="Leeren Ordner löschen">✕</span>' : '';
+        ch.innerHTML = `<svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg><span>${escH(cat || '(Kein Ordner)')}</span>${mvBtns}${delBtn}<span class="sfhl-cat-count">${catLinks.length}</span>`;
+        frag.appendChild(ch);
+        const cb = document.createElement('div'); cb.className = 'sfhl-cat-body';
+        for (const lnk of catLinks) cb.appendChild(_makeDokuEntry(lnk));
+        frag.appendChild(cb);
+      }
+    }
+    dokuLinkList.appendChild(frag);
+  }
+
+  function openDokuForm(lnk) {
+    _dokuEditId = lnk ? lnk.id : null;
+    dokuFKey.value = lnk ? lnk.key : '';
+    dokuFType.value = lnk ? lnk.type : 'root';
+    dokuFLabel.value = lnk ? lnk.label : '';
+    dokuFUrl.value = lnk ? lnk.url : '';
+    dokuFCat.value = lnk ? (lnk.category || '') : '';
+    dokuForm.style.display = 'flex';
+    dokuTab.querySelector('.sfhl-add-bar').style.display = 'none';
+    dokuFKey.focus();
+  }
+
+  function closeDokuForm() {
+    _dokuEditId = null;
+    dokuForm.style.display = 'none';
+    dokuTab.querySelector('.sfhl-add-bar').style.display = 'flex';
+    dokuFKey.value = ''; dokuFType.value = 'root'; dokuFLabel.value = ''; dokuFUrl.value = ''; dokuFCat.value = '';
+  }
+
+  dokuEnabledCb.checked = loadDokuOn();
+  dokuEnabledCb.onchange = () => {
+    if (!dokuEnabledCb.checked) {
+      dokuEnabledCb.checked = true;
+      showConfirm('Der Doku-Lookup wird beim Markieren von Text nicht mehr angezeigt.<br>Deine Einträge bleiben gespeichert.', () => {
+        saveDokuOn(false); dokuEnabledCb.checked = false;
+        dokuTab.querySelector('.sfhl-doku-tab-bar').classList.add('off');
+        toast('Doku-Lookup aus', 'info');
+      });
+    } else { saveDokuOn(true); dokuTab.querySelector('.sfhl-doku-tab-bar').classList.remove('off'); toast('Doku-Lookup an', 'info'); }
+  };
+  dokuTab.querySelector('.sfhl-doku-tab-bar').classList.toggle('off', !loadDokuOn());
+  // Doku-Suche
+  const dokuSearch = dokuTab.querySelector('.sfhl-doku-search-input');
+  let dokuSearchTerm = '';
+  dokuSearch.addEventListener('input', () => { dokuSearchTerm = dokuSearch.value.toLowerCase().trim(); renderDokuLinks(); dokuSearch.nextElementSibling?.classList.toggle('vis', dokuSearch.value.length > 0); });
+  dokuSearch.nextElementSibling?.addEventListener('click', () => { dokuSearch.value = ''; dokuSearch.dispatchEvent(new Event('input')); dokuSearch.focus(); });
+  dokuTab.querySelector('.sfhl-doku-new-btn').onclick = () => openDokuForm(null);
+  dokuTab.querySelector('.sfhl-doku-f-cancel').onclick = closeDokuForm;
+  dokuTab.querySelector('.sfhl-doku-f-save').onclick = () => {
+    const key = dokuFKey.value.trim().slice(0, 24);
+    const label = dokuFLabel.value.trim().slice(0, 100);
+    const type = DOKU_TYPES.includes(dokuFType.value) ? dokuFType.value : 'root';
+    const url = dokuFUrl.value.trim().slice(0, 500);
+    const category = dokuFCat.value.trim().slice(0, 60);
+    if (!key) { toast('Code-Präfix fehlt', 'error'); return; }
+    if (!label) { toast('Bezeichnung fehlt', 'error'); return; }
+    if (!isSafeDokuUrl(url)) { toast('URL ungültig (muss https:// und %s enthalten)', 'error'); return; }
+    const arr = loadDokuLinks();
+    const wasEdit = !!_dokuEditId;
+    if (_dokuEditId) {
+      const idx = arr.findIndex(x => x.id === _dokuEditId);
+      if (idx >= 0) arr[idx] = { id: _dokuEditId, key, label, type, url, category };
+      else arr.push({ id: uid(), key, label, type, url, category });
+    } else {
+      arr.push({ id: uid(), key, label, type, url, category });
+    }
+    // Neuer Ordner? In die Reihenfolge-Liste aufnehmen
+    if (category) { const o = loadDokuCatOrder(); if (!o.includes(category)) { o.push(category); saveDokuCatOrder(o); } }
+    saveDokuLinks(arr); closeDokuForm(); renderDokuLinks();
+    toast(wasEdit ? 'Eintrag aktualisiert' : 'Eintrag hinzugefügt', 'success');
+  };
+  // v4.6.6: Doku-Ordner erstellen (wie bei Markierung)
+  dokuTab.querySelector('.sfhl-doku-folder-add-btn').onclick = () => {
+    const name = (prompt('Name des neuen Ordners:') || '').trim().slice(0, 60);
+    if (!name) return;
+    const o = loadDokuCatOrder();
+    if (o.includes(name)) { toast('Ordner existiert bereits', 'error'); return; }
+    o.push(name); saveDokuCatOrder(o); renderDokuLinks();
+    toast('Ordner erstellt — beim Eintrag im Feld "Ordner" auswählen', 'success', 4000);
+  };
+  // v4.6.6: Doku-Ordner sortieren / leeren Ordner löschen
+  dokuLinkList.addEventListener('click', e => {
+    const hdr = e.target.closest('.sfhl-cat-hdr'); if (!hdr) return;
+    const cat = hdr.dataset.dokuCat || '';
+    const del = e.target.closest('.sfhl-doku-cat-del');
+    if (del && cat) {
+      saveDokuCatOrder(loadDokuCatOrder().filter(c => c !== cat));
+      renderDokuLinks(); toast('Ordner gelöscht', 'info');
+      return;
+    }
+    const mv = e.target.closest('.sfhl-doku-cat-up,.sfhl-doku-cat-down');
+    if (mv && cat) {
+      const vis = [...dokuLinkList.querySelectorAll('.sfhl-cat-hdr')].map(h => h.dataset.dokuCat).filter(Boolean);
+      const i = vis.indexOf(cat);
+      const j = mv.classList.contains('sfhl-doku-cat-up') ? i - 1 : i + 1;
+      if (i >= 0 && j >= 0 && j < vis.length) { [vis[i], vis[j]] = [vis[j], vis[i]]; saveDokuCatOrder(vis); renderDokuLinks(); }
+    }
   });
-  $('.sfhl-doku-ed').addEventListener('change', e => {
-    const it = dokuEdEntry(e.target); if (!it || !e.target.matches('.sfhl-de-type')) return;
-    it.type = e.target.value; saveDokuLinks(dokuEditArr);
-  });
-  $('.sfhl-doku-ed').addEventListener('click', e => {
-    if (!e.target.closest('.sfhl-de-del')) return;
-    const card = e.target.closest('.sfhl-de-card'); if (!card || !dokuEditArr) return;
-    dokuEditArr = dokuEditArr.filter(x => x.id !== card.dataset.id);
-    saveDokuLinks(dokuEditArr); updateDokuCount(); renderDokuEditor();
-  });
+  renderDokuLinks();
+
   $('.sfhl-act-reset').onclick  = () => doReset();
   $('.sfhl-act-reset-rules').onclick = () => {
-    if (!confirm(t('Markierungsregeln auf Standard zur\u00fccksetzen?'))) return;
-    pushBackup('reset-rules');
+    if (!confirm('Markierungsregeln auf Standard zur\u00fccksetzen?')) return;
     RULES = RULE_DEFAULTS.map(e=>({...e,id:uid(),folder:null})); saveRules(); renderRules(); rescanSoon(true);
-    updateBadges(); renderBackups(); toast('Markierungen zur\u00fcckgesetzt','info');
+    updateBadges(); toast('Markierungen zur\u00fcckgesetzt','info');
   };
   $('.sfhl-act-reset-snips').onclick = () => {
-    if (!confirm(t('Snippets auf Standard zur\u00fccksetzen?'))) return;
-    pushBackup('reset-snips');
+    if (!confirm('Snippets auf Standard zur\u00fccksetzen?')) return;
     SNIPPETS = SNIP_DEFAULTS.map(e=>({...e,id:uid(),favorite:!!e.favorite})); saveSnippets(); renderSnippets();
-    updateBadges(); renderBackups(); toast('Snippets zur\u00fcckgesetzt','info');
+    updateBadges(); toast('Snippets zur\u00fcckgesetzt','info');
   };
-  $('.sfhl-backup-list').addEventListener('click', e => {
-    const b = e.target.closest('.sfhl-act-bk-restore'); if (b) restoreBackup(+b.dataset.bk);
-  });
 
   // Palette logic
   function showPalette(sw) {
@@ -2447,7 +2286,8 @@
 
   // ===== Rules Tab: Add/Search/Render/Drag =====
   let ruleSearch = '', dragSrcId = null, dragSrcFolder = null, collapsedFolders = new Set(), collapsedSnipCats = new Set();
-  searchInput.addEventListener('input', () => { ruleSearch = searchInput.value.toLowerCase().trim(); renderRules(); });
+  searchInput.addEventListener('input', () => { ruleSearch = searchInput.value.toLowerCase().trim(); renderRules(); searchInput.nextElementSibling?.classList.toggle('vis', searchInput.value.length > 0); });
+  searchInput.nextElementSibling?.addEventListener('click', () => { searchInput.value = ''; searchInput.dispatchEvent(new Event('input')); searchInput.focus(); });
   $('.sfhl-add-toggle').onclick = () => { addForm.classList.add('vis'); $('.sfhl-add-bar').style.display = 'none'; setTimeout(() => addTermEl.focus(), 50); };
   $('.sfhl-add-cancel').onclick = () => { addForm.classList.remove('vis'); panel.querySelector('[data-tab="rules"] .sfhl-add-bar').style.display = 'flex'; };
   const updateMatchCount = debounce(() => { matchBadge.textContent = String(countMatches(addTermEl.value.trim())); }, 150);
@@ -2463,38 +2303,70 @@
     else toast('Regel hinzugef\u00fcgt','success');
   };
   addTermEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('.sfhl-add-save').click(); } });
-  $('.sfhl-tester-toggle').onclick = () => {
-    const bar = $('.sfhl-tester-bar');
-    const isOpen = bar.classList.toggle('open');
-    if (isOpen) bar.querySelector('.sfhl-tester-input').focus();
-  };
-  $('.sfhl-tester-input').addEventListener('input', e => {
-    const txt = e.target.value.trim();
-    const res = $('.sfhl-tester-result');
-    if (!txt) { res.innerHTML = ''; return; }
-    const match = bestMatch(txt);
-    if (match) {
-      res.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 6px;border-radius:5px;background:${escH(match.color)};font-size:11.5px"><span style="width:8px;height:8px;border-radius:50%;background:rgba(0,0,0,.12);flex-shrink:0"></span><b>${escH(match.term)}</b></span>`;
-    } else {
-      res.innerHTML = '<span style="color:#9ca3af;font-size:11.5px">Keine Regel trifft zu.</span>';
-    }
-  });
-
   // Refresh tab
-  $('.sfhl-rf-apply').onclick = () => { const v=parseInt(rfInput.value,10); const s=saveRefreshSecs(Number.isFinite(v)?v:60); rfInput.value=String(s); restartRefresh(); updatePill(); toast(`Intervall: ${s}s`,'success'); };
+  function applyRfInterval(val) { const v=parseInt(val,10); const s=saveRefreshSecs(Number.isFinite(v)?v:60); rfInput.value=String(s); restartRefresh(); updatePill(); updateRfPresets(); }
+  rfInput.addEventListener('blur', () => applyRfInterval(rfInput.value));
+  rfInput.addEventListener('keydown', e => { if(e.key==='Enter'){ e.preventDefault(); applyRfInterval(rfInput.value); rfInput.blur(); } });
+  function updateRfPresets() { const cur=loadRefreshSecs(); panel.querySelectorAll('.sfhl-rf-preset').forEach(p=>p.classList.toggle('active', Number(p.dataset.secs)===cur)); }
+  panel.querySelectorAll('.sfhl-rf-preset').forEach(p => p.addEventListener('click', () => applyRfInterval(p.dataset.secs)));
+  updateRfPresets();
   rfCb.onchange = () => { saveRefreshOn(rfCb.checked); if(rfCb.checked) restartRefresh(); else stopRefresh(); updatePill(); toast(rfCb.checked?'Auto-Refresh an':'Auto-Refresh aus','info'); };
+
+  // Markierung-Toggle
+  const rulesFeatBar = panel.querySelector('.sfhl-rules-feat-bar');
+  const rulesEnabledCb = rulesFeatBar.querySelector('.sfhl-rules-enabled');
+  rulesEnabledCb.checked = loadRulesOn();
+  rulesFeatBar.classList.toggle('off', !loadRulesOn());
+  rulesEnabledCb.onchange = () => {
+    if (!rulesEnabledCb.checked) {
+      rulesEnabledCb.checked = true;
+      showConfirm('Die Zeilen-Markierung wird ausgeblendet.<br>Deine Regeln bleiben gespeichert.', () => {
+        saveRulesOn(false); rulesEnabledCb.checked = false; rulesFeatBar.classList.add('off');
+        highlightRows(true); toast('Markierung aus', 'info');
+      });
+    } else { saveRulesOn(true); rulesFeatBar.classList.remove('off'); highlightRows(true); toast('Markierung an', 'info'); }
+  };
+
+  // Snippets-Toggle
+  const snipFeatBar = panel.querySelector('.sfhl-snip-feat-bar');
+  const snipEnabledCb = snipFeatBar.querySelector('.sfhl-snip-enabled');
+  snipEnabledCb.checked = loadSnipOn();
+  snipFeatBar.classList.toggle('off', !loadSnipOn());
+  snipEnabledCb.onchange = () => {
+    if (!snipEnabledCb.checked) {
+      snipEnabledCb.checked = true;
+      showConfirm('Das Snippet-Dropdown wird nicht mehr ausgelöst.<br>Deine Snippets bleiben gespeichert.', () => {
+        saveSnipOn(false); snipEnabledCb.checked = false; snipFeatBar.classList.add('off');
+        toast('Snippets aus', 'info');
+      });
+    } else { saveSnipOn(true); snipFeatBar.classList.remove('off'); toast('Snippets an', 'info'); }
+  };
 
   function doExport(mode='all') {
     try {
       const dt=new Date(), pad=n=>String(n).padStart(2,'0'), ds=`${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
       let d, name;
       if (mode==='rules')      { d = { rules: RULES, folders: FOLDERS }; name = `sfhl_markierungen_${ds}.txt`; }
-      else if (mode==='snips') { d = { snippets: SNIPPETS, prefix: loadPrefix(), username: loadUname() }; name = `sfhl_snippets_${ds}.txt`; }
-      else                     { d = { rules: RULES, snippets: SNIPPETS, folders: FOLDERS, prefix: loadPrefix(), username: loadUname() }; name = `sfhl_export_${ds}.txt`; }
+      else if (mode==='snips') { d = { snippets: SNIPPETS, catOrder: loadCatOrder(), prefix: loadPrefix(), username: loadUname() }; name = `sfhl_snippets_${ds}.txt`; }
+      else {
+        // v4.6.5: "Alles exportieren" ist jetzt ein echter Voll-Export — auch Doku-Links,
+        // Ordner-Reihenfolgen und Einstellungen (vorher nur Regeln + Snippets).
+        d = {
+          rules: RULES, snippets: SNIPPETS, folders: FOLDERS,
+          prefix: loadPrefix(), username: loadUname(),
+          dokuLinks: loadDokuLinks(), catOrder: loadCatOrder(), dokuCatOrder: loadDokuCatOrder(),
+          settings: {
+            defaultLang: loadDefaultLang(), wrapOn: loadWrapOn(), wrapAnrede: loadWrapAnrede(), wrapSignatur: loadWrapSignatur(),
+            refreshSecs: loadRefreshSecs(), refreshOn: loadRefreshOn(),
+            slaBlink: loadSla('blink'), slaSound: loadSla('sound'), slaNotify: loadSla('notify'),
+            legend: loadLegendOn(), selRule: loadSelRuleOn(), btnPos: loadBtnPos(), dokuOn: loadDokuOn(), homeAddr: loadHomeAddr()
+          }
+        };
+        name = `sfhl_export_${ds}.txt`;
+      }
       const blob = new Blob([JSON.stringify(d,null,2)],{type:'application/json'}); const a=document.createElement('a');
       a.href=URL.createObjectURL(blob); a.download=name;
       document.body.appendChild(a); a.click(); URL.revokeObjectURL(a.href); a.remove();
-      localStorage.setItem(LS_LAST_EXPORT, String(Date.now())); // Backup-Reminder zurücksetzen
       toast('Exportiert','success');
     } catch { toast('Export fehlgeschlagen','error'); }
   }
@@ -2508,71 +2380,172 @@
     return { trigger, label, body, bodyEn, category: cat, richText: true };
   }
 
+  // FIX v4.6.4: Import ersetzt alle Daten \u2014 vorher Snapshot ziehen, damit ein
+  // versehentlicher Import (falsche Datei) per Toast-Button r\u00fcckg\u00e4ngig gemacht werden kann.
+  let _bak = null;
+  function _undoImport() {
+    if (!_bak) return;
+    RULES = _bak.rules; FOLDERS = _bak.folders; SNIPPETS = _bak.snippets;
+    saveRules(); saveFolders(); saveSnippets(true);
+    saveDokuLinks(_bak.dokuLinks); saveCatOrder(_bak.catOrder); saveDokuCatOrder(_bak.dokuCatOrder);
+    renderRules(); renderSnippets(); renderDokuLinks(); rescanSoon(true); updateBadges();
+    _bak = null;
+    toast('Import r\u00fcckg\u00e4ngig gemacht', 'success');
+  }
+  // v4.7.0: Import-Vorschau \u2014 zeigt den Datei-Inhalt und bietet Ersetzen ODER Hinzuf\u00fcgen
+  // (Merge) an, statt kommentarlos alles zu \u00fcberschreiben.
+  function _importSnapshot() {
+    _bak = { rules: RULES.slice(), folders: FOLDERS.slice(), snippets: SNIPPETS.slice(), dokuLinks: loadDokuLinks(), catOrder: loadCatOrder(), dokuCatOrder: loadDokuCatOrder() };
+  }
+  function showImportDialog(summaryHtml, onReplace, onMerge) {
+    document.querySelector('.sfhl-modal-ov')?.remove();
+    const ov = document.createElement('div'); ov.className = 'sfhl-modal-ov';
+    ov.innerHTML = `<div class="sfhl-modal"><h3>Datei importieren</h3><div class="sfhl-modal-body">${summaryHtml}</div><div class="sfhl-modal-acts"><div class="sfhl-btn-sm sfhl-m-cancel" role="button">Abbrechen</div><div class="sfhl-btn-sm sfhl-m-merge" role="button">Hinzuf\u00fcgen</div><div class="sfhl-btn-sm sfhl-btn-primary sfhl-m-replace" role="button">Ersetzen</div></div></div>`;
+    const close = () => ov.remove();
+    ov.onclick = e => { if (e.target === ov) close(); };
+    ov.querySelector('.sfhl-m-cancel').onclick = close;
+    ov.querySelector('.sfhl-m-replace').onclick = () => { close(); onReplace(); };
+    ov.querySelector('.sfhl-m-merge').onclick = () => { close(); onMerge(); };
+    document.documentElement.appendChild(ov);
+  }
   fileInput.onchange = async ev => {
     const file = ev.target.files?.[0]; if (!file) return;
+    let raw;
+    try { raw = JSON.parse(await file.text()); } catch { toast('Ung\u00fcltiges Format','error',3500); return; }
+    const isArr = Array.isArray(raw);
+    const nRules = isArr ? raw.length : (Array.isArray(raw.rules) ? raw.rules.length : 0);
+    const nFold  = !isArr && Array.isArray(raw.folders) ? raw.folders.length : 0;
+    const nSnips = !isArr && Array.isArray(raw.snippets) ? raw.snippets.length : 0;
+    const nDoku  = !isArr && Array.isArray(raw.dokuLinks) ? raw.dokuLinks.length : 0;
+    const hasSet = !isArr && raw.settings && typeof raw.settings === 'object';
+    if (!nRules && !nSnips && !nDoku && !hasSet) { toast('Kein bekanntes Export-Format','error',3500); return; }
+    const parts = [];
+    if (nRules) parts.push(`${nRules} Regel${nRules===1?'':'n'}${nFold ? ` (${nFold} Ordner)` : ''}`);
+    if (nSnips) parts.push(`${nSnips} Snippet${nSnips===1?'':'s'}`);
+    if (nDoku)  parts.push(`${nDoku} Doku-Link${nDoku===1?'':'s'}`);
+    if (hasSet) parts.push('Einstellungen');
+    const summary = `Die Datei enth\u00e4lt:<br><b>${parts.join(' \u00b7 ')}</b><br><br><b>Ersetzen</b> \u00fcberschreibt die vorhandenen Daten der enthaltenen Bereiche.<br><b>Hinzuf\u00fcgen</b> erg\u00e4nzt nur Neues (Duplikate werden \u00fcbersprungen), eigene Einstellungen bleiben unver\u00e4ndert.`;
+    showImportDialog(summary, () => applyImportReplace(raw), () => applyImportMerge(raw));
+  };
+  function showConfirm(msg, onOk) {
+    const ov = document.createElement('div'); ov.className = 'sfhl-modal-ov';
+    ov.innerHTML = `<div class="sfhl-modal"><h3>Bitte bestätigen</h3><div class="sfhl-modal-body">${msg}</div><div class="sfhl-modal-acts"><div class="sfhl-btn-sm sfhl-m-cancel" role="button">Abbrechen</div><div class="sfhl-btn-sm sfhl-btn-primary sfhl-m-ok" role="button">Deaktivieren</div></div></div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.querySelector('.sfhl-m-cancel').onclick = close;
+    ov.querySelector('.sfhl-m-ok').onclick = () => { close(); onOk(); };
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  }
+  function applyImportReplace(raw) {
     try {
-      const raw = JSON.parse(await file.text());
-      pushBackup('import'); renderBackups(); // aktuellen Stand sichern, bevor er ersetzt wird
-      if (Array.isArray(raw)) { RULES = raw.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false,alarm:e.alarm===true})); saveRules(); renderRules(); rescanSoon(true); toast(`${RULES.length} Regeln importiert`,'success'); return; }
+      _importSnapshot();
+      if (Array.isArray(raw)) { RULES = raw.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false,alarm:e.alarm===true})); saveRules(); renderRules(); rescanSoon(true); toast(`${RULES.length} Regeln importiert`,'success',8000,{label:'R\u00fcckg\u00e4ngig',fn:_undoImport}); return; }
       if (raw.rules) { RULES = raw.rules.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false,folder:e.folder||null,alarm:e.alarm===true})); saveRules(); renderRules(); rescanSoon(true); }
       if (raw.folders) { FOLDERS = raw.folders.map(f=>({id:f.id||uid(),name:String(f.name||'')})); saveFolders(); }
       if (raw.snippets) {
-        const valid = raw.snippets.map(e => { const s = sanitizeSnippetImport(e); return s ? { id: uid(), ...s, favorite: !!e.favorite, usageCount: Number(e.usageCount) || 0 } : null; }).filter(Boolean);
+        const valid = raw.snippets.map(e => { const s = sanitizeSnippetImport(e); return s ? { id: uid(), ...s, favorite: !!e.favorite } : null; }).filter(Boolean);
         SNIPPETS = valid; saveSnippets(); renderSnippets();
       }
       if (raw.prefix && PREFIXES.includes(raw.prefix)) { savePrefix(raw.prefix); setPrefix.value = raw.prefix; }
       if (raw.username) { saveUname(raw.username); setUname.value = raw.username; }
-      updateBadges(); toast('Import erfolgreich','success');
-    } catch { toast('Ung\u00fcltiges Format','error',3500); }
-  };
-  // v4.10.0 Rotierende Auto-Backups: vor Import/Reset den aktuellen Stand sichern (max 3, neueste zuerst).
-  const BACKUP_MAX = 3;
-  const BACKUP_REASONS = { 'import':'vor Import', 'reset-all':'vor \u201eAlles zur\u00fccksetzen"', 'reset-rules':'vor \u201eMarkierungen zur\u00fccksetzen"', 'reset-snips':'vor \u201eSnippets zur\u00fccksetzen"', 'restore':'vor Wiederherstellung' };
-  function loadBackups() { try { const r = localStorage.getItem(LS_BACKUPS); const a = r ? JSON.parse(r) : []; return Array.isArray(a) ? a : []; } catch { return []; } }
-  function pushBackup(reason) {
-    try {
-      const snap = { at: Date.now(), reason, rules: RULES, folders: FOLDERS, snippets: SNIPPETS, prefix: loadPrefix(), username: loadUname() };
-      let arr = loadBackups(); arr.unshift(snap); arr = arr.slice(0, BACKUP_MAX);
-      // Quota-sicher: bei \u00dcberlauf \u00e4lteste verwerfen und erneut versuchen
-      while (arr.length) {
-        try { localStorage.setItem(LS_BACKUPS, JSON.stringify(arr)); break; }
-        catch { arr.pop(); if (!arr.length) console.warn('[SFHL] Auto-Backup zu gro\u00df f\u00fcr localStorage, \u00fcbersprungen'); }
+      // v4.6.5: Voll-Export einlesen \u2014 Doku-Links, Kategorie-Reihenfolge, Einstellungen
+      if (Array.isArray(raw.dokuLinks)) {
+        const TYPES = ['root','serial','auftrag','order','free'];
+        const clean = raw.dokuLinks.map(e => ({ id:uid(), key:String(e.key||'').slice(0,24), label:String(e.label||'').slice(0,100), type:TYPES.includes(e.type)?e.type:'root', url:String(e.url||'').slice(0,500), category:String(e.category||'').slice(0,60) })).filter(e => isSafeDokuUrl(e.url));
+        saveDokuLinks(clean); renderDokuLinks();
       }
-    } catch (e) { console.warn('[SFHL] Auto-Backup fehlgeschlagen:', e); }
+      if (Array.isArray(raw.catOrder)) saveCatOrder(raw.catOrder.map(String));
+      if (Array.isArray(raw.dokuCatOrder)) { saveDokuCatOrder(raw.dokuCatOrder.map(String)); renderDokuLinks(); }
+      if (raw.settings && typeof raw.settings === 'object') {
+        const s = raw.settings;
+        if (s.defaultLang === 'de' || s.defaultLang === 'en') { saveDefaultLang(s.defaultLang); setLang.value = s.defaultLang; }
+        if (typeof s.wrapOn === 'boolean') { saveWrapOn(s.wrapOn); wrapCb.checked = s.wrapOn; }
+        if (typeof s.wrapAnrede === 'string') saveWrapAnrede(s.wrapAnrede);
+        if (typeof s.wrapSignatur === 'string') saveWrapSignatur(s.wrapSignatur);
+        if (Number.isFinite(s.refreshSecs)) rfInput.value = String(saveRefreshSecs(s.refreshSecs));
+        if (typeof s.refreshOn === 'boolean') { saveRefreshOn(s.refreshOn); rfCb.checked = s.refreshOn; }
+        if (typeof s.slaBlink === 'boolean') { saveSla('blink', s.slaBlink); slaBlinkCb.checked = s.slaBlink; }
+        if (typeof s.slaSound === 'boolean') { saveSla('sound', s.slaSound); slaSoundCb.checked = s.slaSound; }
+        if (typeof s.slaNotify === 'boolean') { saveSla('notify', s.slaNotify); slaNotifyCb.checked = s.slaNotify; }
+        if (typeof s.legend === 'boolean') { saveLegendOn(s.legend); legendCb.checked = s.legend; }
+        if (typeof s.selRule === 'boolean') { saveSelRuleOn(s.selRule); selRuleCb.checked = s.selRule; }
+        if (s.btnPos === 'header' || s.btnPos === 'floating') { saveBtnPos(s.btnPos); btnPosSel.value = s.btnPos; updateVis(); }
+        if (typeof s.dokuOn === 'boolean') { saveDokuOn(s.dokuOn); dokuEnabledCb.checked = s.dokuOn; }
+        if (typeof s.homeAddr === 'string') { saveHomeAddr(s.homeAddr); setHomeAddr.value = loadHomeAddr(); }
+        updateWrapDropdowns(); updatePill(); restartRefresh();
+      }
+      updateBadges(); toast('Import erfolgreich','success',8000,{label:'R\u00fcckg\u00e4ngig',fn:_undoImport});
+    } catch { toast('Import fehlgeschlagen','error',3500); }
   }
-  function renderBackups() {
-    const box = $('.sfhl-backup-list'); if (!box) return;
-    const arr = loadBackups();
-    if (!arr.length) { box.innerHTML = '<p style="font-size:11px;color:#9ca3af;margin:2px">Noch keine Sicherungen vorhanden.</p>'; return; }
-    const pad = n => String(n).padStart(2,'0');
-    box.innerHTML = arr.map((s,i) => {
-      const d = new Date(s.at||0);
-      const ds = `${pad(d.getDate())}.${pad(d.getMonth()+1)}. ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-      const nR = Array.isArray(s.rules)?s.rules.length:0, nS = Array.isArray(s.snippets)?s.snippets.length:0;
-      const reason = BACKUP_REASONS[s.reason] || s.reason || '';
-      return `<div class="sfhl-bk-row"><div class="sfhl-bk-meta"><span class="sfhl-bk-when">${escH(ds)}</span><span class="sfhl-bk-reason">${escH(reason)}</span><span class="sfhl-bk-counts">${nR} Regeln \u00b7 ${nS} Snippets</span></div><div class="sfhl-btn-sm sfhl-act-bk-restore" data-bk="${i}" role="button">Wiederherstellen</div></div>`;
-    }).join('');
-  }
-  function restoreBackup(idx) {
-    const arr = loadBackups(); const snap = arr[idx]; if (!snap) return;
-    if (!confirm(t('Diesen Sicherungsstand wiederherstellen? Der aktuelle Stand wird vorher gesichert.'))) return;
-    pushBackup('restore'); // aktuellen Stand sichern \u2192 Wiederherstellung ist selbst r\u00fcckg\u00e4ngig machbar
-    if (Array.isArray(snap.rules)) { RULES = snap.rules.map(e=>({id:e.id||uid(),term:String(e.term||''),color:safeColor(e.color),enabled:e.enabled!==false,folder:e.folder||null,alarm:e.alarm===true})); saveRules(); renderRules(); rescanSoon(true); }
-    if (Array.isArray(snap.folders)) { FOLDERS = snap.folders.map(f=>({id:f.id||uid(),name:String(f.name||'')})); saveFolders(); }
-    if (Array.isArray(snap.snippets)) { SNIPPETS = snap.snippets.map(e=>({ id:e.id||uid(), trigger:String(e.trigger||''), label:String(e.label||''), body:String(e.body||''), bodyEn:String(e.bodyEn||''), category:String(e.category||''), richText:e.richText!==false, favorite:!!e.favorite, usageCount:Number(e.usageCount)||0 })); saveSnippets(true); renderSnippets(); }
-    if (snap.prefix && PREFIXES.includes(snap.prefix)) { savePrefix(snap.prefix); if (setPrefix) setPrefix.value = snap.prefix; }
-    if (snap.username) { saveUname(snap.username); if (setUname) setUname.value = snap.username; }
-    updateBadges(); renderBackups(); toast('Sicherung wiederhergestellt','success');
+  // v4.7.0: Merge-Import \u2014 erg\u00e4nzt nur Neues. Duplikat-Kriterien: Regeln \u00fcber das
+  // Stichwort, Snippets \u00fcber den Trigger, Doku-Links \u00fcber Pr\u00e4fix+URL. Regel-Ordner
+  // werden \u00fcber den Namen zusammengef\u00fchrt (IDs der Datei werden remappt).
+  // Einstellungen/Prefix/Name werden beim Merge bewusst NICHT \u00fcbernommen.
+  function applyImportMerge(raw) {
+    try {
+      _importSnapshot();
+      const added = { rules: 0, snippets: 0, doku: 0 };
+      const impRules = Array.isArray(raw) ? raw : (Array.isArray(raw.rules) ? raw.rules : []);
+      if (impRules.length) {
+        const impFolders = (!Array.isArray(raw) && Array.isArray(raw.folders)) ? raw.folders : [];
+        const idToName = new Map(impFolders.map(f => [f.id, String(f.name || '')]));
+        const nameToLocal = new Map(FOLDERS.map(f => [f.name, f.id]));
+        const have = new Set(RULES.map(r => norm(r.term).trim()));
+        for (const e of impRules) {
+          const term = String(e.term || '');
+          if (!term || have.has(norm(term).trim())) continue;
+          let folder = null;
+          const fname = idToName.get(e.folder);
+          if (fname) {
+            if (!nameToLocal.has(fname)) { const nf = { id: uid(), name: fname }; FOLDERS.push(nf); nameToLocal.set(fname, nf.id); }
+            folder = nameToLocal.get(fname);
+          }
+          RULES.push({ id: uid(), term, color: safeColor(e.color), enabled: e.enabled !== false, folder, alarm: e.alarm === true });
+          have.add(norm(term).trim()); added.rules++;
+        }
+        if (added.rules) { saveRules(); saveFolders(); renderRules(); rescanSoon(true); }
+      }
+      if (!Array.isArray(raw) && Array.isArray(raw.snippets)) {
+        const have = new Set(SNIPPETS.map(s => s.trigger.toLowerCase()));
+        for (const e of raw.snippets) {
+          const s = sanitizeSnippetImport(e);
+          if (!s || have.has(s.trigger.toLowerCase())) continue;
+          SNIPPETS.push({ id: uid(), ...s, favorite: !!e.favorite });
+          have.add(s.trigger.toLowerCase()); added.snippets++;
+        }
+        if (Array.isArray(raw.catOrder)) { const o = loadCatOrder(); for (const c of raw.catOrder.map(String)) if (c && !o.includes(c)) o.push(c); saveCatOrder(o); }
+        if (added.snippets) { saveSnippets(); renderSnippets(); }
+      }
+      if (!Array.isArray(raw) && Array.isArray(raw.dokuLinks)) {
+        const TYPES = ['root','serial','auftrag','order','free'];
+        const arr = loadDokuLinks();
+        const have = new Set(arr.map(d => d.key.toLowerCase() + '|' + d.url));
+        for (const e of raw.dokuLinks) {
+          const d = { id: uid(), key: String(e.key||'').slice(0,24), label: String(e.label||'').slice(0,100), type: TYPES.includes(e.type)?e.type:'root', url: String(e.url||'').slice(0,500), category: String(e.category||'').slice(0,60) };
+          const dupKey = d.key.toLowerCase() + '|' + d.url;
+          if (!isSafeDokuUrl(d.url) || have.has(dupKey)) continue;
+          arr.push(d); have.add(dupKey); added.doku++;
+        }
+        if (Array.isArray(raw.dokuCatOrder)) { const o = loadDokuCatOrder(); for (const c of raw.dokuCatOrder.map(String)) if (c && !o.includes(c)) o.push(c); saveDokuCatOrder(o); }
+        if (added.doku) { saveDokuLinks(arr); }
+        renderDokuLinks();
+      }
+      updateBadges();
+      const msg = [];
+      if (added.rules) msg.push(`${added.rules} Regel${added.rules===1?'':'n'}`);
+      if (added.snippets) msg.push(`${added.snippets} Snippet${added.snippets===1?'':'s'}`);
+      if (added.doku) msg.push(`${added.doku} Doku-Link${added.doku===1?'':'s'}`);
+      if (msg.length) toast(msg.join(', ') + ' hinzugef\u00fcgt', 'success', 8000, {label:'R\u00fcckg\u00e4ngig', fn:_undoImport});
+      else { _bak = null; toast('Nichts Neues \u2014 alle Eintr\u00e4ge sind schon vorhanden', 'info', 4000); }
+    } catch { toast('Import fehlgeschlagen','error',3500); }
   }
   function doReset() {
-    if (!confirm(t('Alles auf Standard zur\u00fccksetzen? (Regeln + Snippets)'))) return;
-    pushBackup('reset-all');
+    if (!confirm('Alles auf Standard zur\u00fccksetzen? (Regeln + Snippets)')) return;
     RULES = RULE_DEFAULTS.map(e=>({...e,id:uid(),folder:null})); saveRules(); renderRules(); rescanSoon(true);
     FOLDERS = []; saveFolders();
     SNIPPETS = SNIP_DEFAULTS.map(e=>({...e,id:uid(),favorite:!!e.favorite})); saveSnippets(); renderSnippets();
-    updateBadges(); renderBackups(); toast('Zur\u00fcckgesetzt','info');
+    updateBadges(); toast('Zur\u00fcckgesetzt','info');
   }
-  renderBackups(); // initiale Liste beim Panel-Aufbau
 
   // Trefferstatistik: wie viele Zeilen der aktuellen Liste trifft jede Regel
   // (unabhängig von Priorität/first-wins). 3s-Cache, damit die Regel-Suche beim Tippen
@@ -2585,12 +2558,13 @@
       if (!isCaseListPage()) return null;
       const rows = getRows();
       if (!rows.length) return null;
-      const texts = rows.map(row => { const cells = row.querySelectorAll('td'); let t2 = ''; for (const c of cells) t2 += ' ' + (c.innerText || c.textContent || ''); return t2; });
+      const needCols = anyColRule();
+      const texts = rows.map(row => { const cells = row.querySelectorAll('td'); let t2 = ''; for (const c of cells) t2 += ' ' + (c.innerText || c.textContent || ''); return { txt: t2, cols: needCols ? getRowCols(row) : null }; });
       const map = new Map();
       for (const r of RULES) {
         if (!r.enabled || !r.term) continue;
         let n = 0;
-        for (const tx of texts) if (matchesRule(tx, r.term)) n++;
+        for (const tx of texts) if (matchesRule(tx.txt, r.term, tx.cols)) n++;
         map.set(r.id, n);
       }
       _hitCache = map;
@@ -2608,9 +2582,12 @@
       ? '<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
       : '<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
     const prio = (item.enabled && item.term) ? enabledWithTerm.indexOf(item) + 1 : 0;
+    // v4.6.5: Prio als Eingabefeld \u2014 Zahl eintippen sortiert die Regel global um.
+    // L\u00f6st das Priorisieren, wenn Regeln in Ordnern stecken (Drag \u00fcber Ordnergrenzen
+    // hinweg \u00e4ndert sonst die Ordnerzugeh\u00f6rigkeit statt nur die Reihenfolge).
     const prioBadge = prio > 0
-      ? `<div class="sfhl-rule-prio has-prio" title="Priorit\u00e4t ${prio}">#${prio}</div>`
-      : `<div class="sfhl-rule-prio" title="Inaktiv">\u2013</div>`;
+      ? `<input type="text" inputmode="numeric" class="sfhl-rule-prio-inp" value="${prio}" title="Priorit\u00e4t ${prio} von ${enabledWithTerm.length} \u2014 Zahl \u00e4ndern + Enter sortiert um (1 = wird zuerst gepr\u00fcft)">`
+      : `<div class="sfhl-rule-prio" title="Inaktiv \u2014 Regel ist deaktiviert oder leer">\u2013</div>`;
     const col = safeColor(item.color);
     const hits = (hitMap && item.enabled && item.term) ? hitMap.get(item.id) : null;
     const hitBadge = (typeof hits === 'number' && hits > 0) ? `<span class="sfhl-hits" title="${hits} Zeile(n) in der aktuellen Liste treffen (unabh\u00e4ngig von Priorit\u00e4t)">${hits}</span>` : '';
@@ -2651,11 +2628,13 @@
     // Folders
     for (const folder of FOLDERS) {
       const fRules = filtered.filter(r => r.folder === folder.id);
-      const isCollapsed = collapsedFolders.has(folder.id);
+      // FIX v4.6.4: Bei aktiver Suche Ordner immer aufklappen — sonst sind Treffer
+      // in zugeklappten Ordnern unsichtbar und die Suche wirkt kaputt.
+      const isCollapsed = !ruleSearch && collapsedFolders.has(folder.id);
       const fh = document.createElement('div');
       fh.className = 'sfhl-folder-hdr' + (isCollapsed ? ' collapsed' : '');
       fh.dataset.folderId = folder.id;
-      fh.innerHTML = `<svg class="sfhl-chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg><svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span class="sfhl-folder-name">${escH(folder.name)}</span><span class="sfhl-folder-count">${fRules.length}</span><span class="sfhl-folder-del" role="button" title="Ordner l\u00f6schen"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>`;
+      fh.innerHTML = `<svg class="sfhl-chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg><svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span class="sfhl-folder-name">${escH(folder.name)}</span><span class="sfhl-folder-count">${fRules.length}</span><span class="sfhl-mv sfhl-folder-up" role="button" title="Ordner nach oben">\u25b2</span><span class="sfhl-mv sfhl-folder-down" role="button" title="Ordner nach unten">\u25bc</span><span class="sfhl-folder-del" role="button" title="Ordner l\u00f6schen"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>`;
       listEl.appendChild(fh);
       const fb = document.createElement('div');
       fb.className = 'sfhl-folder-body' + (isCollapsed ? ' collapsed' : '');
@@ -2666,9 +2645,47 @@
     updateBadges();
   }
 
+  // v4.6.5: Regel per eingetippter Prio-Zahl global umsortieren. target = gewünschte
+  // Position unter den aktiven Regeln (1-basiert); die Regel wird im RULES-Array direkt
+  // vor die Regel geschoben, die aktuell an dieser Position steht. Ordnerzugehörigkeit
+  // bleibt unverändert — nur die Prüf-Reihenfolge ändert sich.
+  function setRulePriority(ruleId, target) {
+    const rule = RULES.find(r => r.id === ruleId); if (!rule) return;
+    const others = RULES.filter(r => r.enabled && r.term && r.id !== ruleId);
+    const pos = Math.max(1, Math.min(Math.round(target) || 1, others.length + 1));
+    RULES = RULES.filter(r => r.id !== ruleId);
+    if (pos > others.length) {
+      const last = others[others.length - 1];
+      RULES.splice(last ? RULES.indexOf(last) + 1 : RULES.length, 0, rule);
+    } else {
+      RULES.splice(RULES.indexOf(others[pos - 1]), 0, rule);
+    }
+    saveRules(); renderRules(); rescanSoon(true);
+    toast('Priorität: #' + pos, 'info', 1500);
+  }
   // Rules event delegation
-  listEl.addEventListener('change', e => { const item = RULES.find(x=>x.id===e.target.closest('.sfhl-row')?.dataset.ruleId); if(!item) return; if(e.target.matches('.sfhl-r-term')){item.term=e.target.value;e.target.title=e.target.value;saveRules();rescanSoon(true);if(invalidRegexIn(item.term).length)toast('Ungültige Regex — Regel wird als einfache Textsuche behandelt','error',4500);} });
+  listEl.addEventListener('change', e => {
+    const item = RULES.find(x=>x.id===e.target.closest('.sfhl-row')?.dataset.ruleId); if(!item) return;
+    if(e.target.matches('.sfhl-r-term')){item.term=e.target.value;e.target.title=e.target.value;saveRules();rescanSoon(true);if(invalidRegexIn(item.term).length)toast('Ungültige Regex — Regel wird als einfache Textsuche behandelt','error',4500);}
+    if(e.target.matches('.sfhl-rule-prio-inp')){const n=parseInt(e.target.value,10);if(Number.isFinite(n))setRulePriority(item.id,n);else renderRules();}
+  });
+  // Enter im Prio-Feld bestätigt sofort (change feuert sonst erst beim Verlassen)
+  listEl.addEventListener('keydown', e => {
+    if (e.target.matches('.sfhl-rule-prio-inp') && e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+  });
   listEl.addEventListener('click', e => {
+    // v4.6.5: Ordner per Pfeil nach oben/unten sortieren
+    const mvF = e.target.closest('.sfhl-folder-up,.sfhl-folder-down');
+    if (mvF) {
+      const fid = mvF.closest('.sfhl-folder-hdr')?.dataset.folderId;
+      const i = FOLDERS.findIndex(f => f.id === fid);
+      const j = mvF.classList.contains('sfhl-folder-up') ? i - 1 : i + 1;
+      if (i >= 0 && j >= 0 && j < FOLDERS.length) {
+        [FOLDERS[i], FOLDERS[j]] = [FOLDERS[j], FOLDERS[i]];
+        saveFolders(); renderRules();
+      }
+      return;
+    }
     // Folder header toggle (not del button)
     const fhdr = e.target.closest('.sfhl-folder-hdr');
     if (fhdr && !e.target.closest('.sfhl-folder-del')) {
@@ -2682,7 +2699,7 @@
     const fdel = e.target.closest('.sfhl-folder-del');
     if (fdel) {
       const fid = fdel.closest('.sfhl-folder-hdr')?.dataset.folderId; if (!fid) return;
-      if (!confirm(t('Ordner l\u00f6schen? Enthaltene Regeln werden in "Ohne Ordner" verschoben.'))) return;
+      if (!confirm('Ordner l\u00f6schen? Enthaltene Regeln werden in "Ohne Ordner" verschoben.')) return;
       RULES.forEach(r => { if (r.folder === fid) r.folder = null; });
       FOLDERS = FOLDERS.filter(f => f.id !== fid);
       saveFolders(); saveRules(); renderRules(); rescanSoon(true); toast('Ordner gel\u00f6scht', 'info'); return;
@@ -2757,92 +2774,72 @@
 
   // Ordner-Erstellen Button
   $('.sfhl-folder-add-btn').onclick = () => {
-    const name = prompt(t('Ordnername:'));
+    const name = prompt('Ordnername:');
     if (!name || !name.trim()) return;
     FOLDERS.push({ id: uid(), name: name.trim() });
     saveFolders(); renderRules(); toast('Ordner erstellt', 'success');
   };
 
   // ===== Snippets Tab =====
-  let snipSearchTerm = '', editingSnipId = null, activeCatFilter = null;
-  snipSearch.addEventListener('input', () => { snipSearchTerm = snipSearch.value.toLowerCase().trim(); renderSnippets(); });
-  catChipsEl.addEventListener('click', e => {
-    const chip = e.target.closest('.sfhl-cat-chip'); if (!chip) return;
-    activeCatFilter = chip.dataset.cat || null;
-    renderSnippets();
-  });
+  let snipSearchTerm = '', editingSnipId = null;
+  snipSearch.addEventListener('input', () => { snipSearchTerm = snipSearch.value.toLowerCase().trim(); renderSnippets(); snipSearch.nextElementSibling?.classList.toggle('vis', snipSearch.value.length > 0); });
+  snipSearch.nextElementSibling?.addEventListener('click', () => { snipSearch.value = ''; snipSearch.dispatchEvent(new Event('input')); snipSearch.focus(); });
 
-  function renderCatChips() {
-    if (!catChipsEl) return;
-    const cats = [...new Set(SNIPPETS.map(s => s.category || '(Keine Kategorie)'))].sort((a,b) => {
-      if (a === '(Keine Kategorie)') return 1; if (b === '(Keine Kategorie)') return -1;
-      return a.localeCompare(b, 'de');
-    });
-    if (cats.length <= 1) { catChipsEl.innerHTML = ''; return; }
-    catChipsEl.innerHTML = `<span class="sfhl-cat-chip${!activeCatFilter?' active':''}" data-cat="">Alle</span>` +
-      cats.map(c => `<span class="sfhl-cat-chip${activeCatFilter===c?' active':''}" data-cat="${escH(c)}">${escH(c)}</span>`).join('');
-  }
 
   function renderSnippets() {
-    renderCatChips();
     // DocumentFragment für bessere Performance (#24)
     const frag = document.createDocumentFragment();
     const prefix = loadPrefix();
     if (SNIPPETS.length === 0) {
       snipListEl.innerHTML = `<div class="sfhl-empty"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><p class="sfhl-empty-title">Noch keine Snippets</p><p class="sfhl-empty-sub">Erstelle einen Textbaustein und füge ihn überall per Prefix ein.</p></div>`;
-      updateBadges(); updateCatDatalist(); return;
+      updateBadges(); updateCatDatalist(); updateWrapDropdowns(); return;
     }
     // Suche auch nach Kategorie (#12)
     // FIX #20: body-Suche auf ersten 500 Zeichen begrenzt — verhindert massives String-Normalisieren bei jedem Tastendruck
     let filtered = snipSearchTerm
       ? SNIPPETS.filter(s => norm(s.trigger).includes(snipSearchTerm) || norm(s.label).includes(snipSearchTerm) || norm(s.category).includes(snipSearchTerm) || norm(s.body.slice(0,500)).includes(snipSearchTerm))
       : SNIPPETS;
-    if (activeCatFilter) filtered = filtered.filter(s => (s.category || '(Keine Kategorie)') === activeCatFilter);
 
-    // Recently Used (#15)
-    const recentIds = loadRecent().filter(id => SNIPPETS.some(s => s.id === id));
-    if (recentIds.length > 0 && !snipSearchTerm) {
-      const rh = document.createElement('div');
-      rh.className = 'sfhl-recent-hdr';
-      rh.innerHTML = '⏱ Zuletzt verwendet';
-      frag.appendChild(rh);
-      const rb2 = document.createElement('div'); rb2.className = 'sfhl-cat-body';
-      for (const id of recentIds.slice(0,5)) {
-        const snip = SNIPPETS.find(s => s.id === id); if (!snip) continue;
-        rb2.appendChild(makeSnipRow(snip, prefix));
-      }
-      frag.appendChild(rb2);
-    }
-
-    // Kategorien gruppieren
+    // Ordner gruppieren
     const catMap = new Map();
     for (const snip of filtered) {
-      const cat = snip.category || '(Keine Kategorie)';
+      const cat = snip.category || '(Kein Ordner)';
       if (!catMap.has(cat)) catMap.set(cat, []);
       catMap.get(cat).push(snip);
     }
-    // Favoriten-Kategorie immer zuerst (FIX B7: echte Kategorie "★ Favoriten" nicht überschreiben)
+    // Favoriten-Ordner immer zuerst
     const favSnips = filtered.filter(s => s.favorite);
     if (favSnips.length > 0) {
       const existing = catMap.get('★ Favoriten') || [];
       catMap.set('★ Favoriten', [...new Set([...favSnips, ...existing])]);
     }
+    // Leere Ordner aus catOrder einblenden (explizit erstellt, noch ohne Snippets)
+    const catOrder = loadCatOrder();
+    if (!snipSearchTerm) {
+      for (const name of catOrder) {
+        if (name && name !== '★ Favoriten' && name !== '(Kein Ordner)' && !catMap.has(name)) catMap.set(name, []);
+      }
+    }
     const cats = [...catMap.keys()].sort((a, b) => {
       if (a === '★ Favoriten') return -1;
       if (b === '★ Favoriten') return 1;
-      if (a === '(Keine Kategorie)') return 1;
-      if (b === '(Keine Kategorie)') return -1;
-      return a.localeCompare(b, 'de');
+      if (a === '(Kein Ordner)') return 1;
+      if (b === '(Kein Ordner)') return -1;
+      const ia = catOrder.indexOf(a), ib = catOrder.indexOf(b);
+      return ((ia === -1 ? 1e9 : ia) - (ib === -1 ? 1e9 : ib)) || a.localeCompare(b, 'de');
     });
 
     for (const cat of cats) {
       const snips = catMap.get(cat);
+      const isEmpty = snips.length === 0;
       const isCollapsed = collapsedSnipCats.has(cat);
       const ch = document.createElement('div');
       ch.className = 'sfhl-cat-hdr' + (isCollapsed ? ' collapsed' : '');
       ch.dataset.cat = cat;
-      // Kategorie-Name doppelklickbar zum Umbenennen (#7)
-      ch.innerHTML = `<svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg><span class="sfhl-cat-name" title="Doppelklick zum Umbenennen">${escH(cat)}</span><span class="sfhl-cat-count">${snips.length}</span>`;
+      const canMove = cat !== '★ Favoriten' && cat !== '(Kein Ordner)';
+      const mvBtns = canMove ? '<span class="sfhl-mv sfhl-cat-up" role="button" title="Ordner nach oben">▲</span><span class="sfhl-mv sfhl-cat-down" role="button" title="Ordner nach unten">▼</span>' : '';
+      const delBtn = (canMove && isEmpty) ? '<span class="sfhl-cat-del" role="button" title="Leeren Ordner löschen">✕</span>' : '';
+      ch.innerHTML = `<svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg><span class="sfhl-cat-name" title="Doppelklick zum Umbenennen">${escH(cat)}</span>${mvBtns}${delBtn}<span class="sfhl-cat-count">${snips.length}</span>`;
       frag.appendChild(ch);
       const cb = document.createElement('div');
       cb.className = 'sfhl-cat-body' + (isCollapsed ? ' collapsed' : '');
@@ -2854,6 +2851,7 @@
     updateBadges();
     updateCatDatalist();
     updateSnipInsertDropdown();
+    updateWrapDropdowns(); // FIX v4.6.4: Auto-Wrap-Auswahl sofort aktualisieren
   }
 
   // Snippet-Zeile bauen — ausgelagert für DocumentFragment + D&D
@@ -2865,14 +2863,14 @@
     // HTML-bereinigte Vorschau (#13): Tags entfernen, echten Text zeigen
     const plainPrev = htmlToPlain(snip.body).replace(/\n/g,' ').slice(0,80);
 
-    row.innerHTML = `<div class="sfhl-snip-row-top"><span class="sfhl-snip-grip" title="Ziehen zum Sortieren"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/></svg></span><span class="sfhl-snip-trigger">${escH(prefix+snip.trigger)}</span><span class="sfhl-snip-label">${escH(snip.label)}</span><span style="font-size:9px;color:#9ca3af;flex-shrink:0">${snip.usageCount>0?snip.usageCount+'×':''}</span><span class="sfhl-snip-copy" data-copy-id="${snip.id}" title="Kopieren"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span><span class="sfhl-fav${snip.favorite?' on':''}" data-fav-id="${snip.id}" title="Favorit">★</span></div><div class="sfhl-snip-preview">${escH(plainPrev)}${plainPrev.length>=80?'\u2026':''}</div>`;
+    row.innerHTML = `<div class="sfhl-snip-row-top"><span class="sfhl-snip-grip" title="Ziehen zum Sortieren"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/></svg></span><span class="sfhl-snip-trigger">${escH(prefix+snip.trigger)}</span><span class="sfhl-snip-label">${escH(snip.label)}</span><span class="sfhl-snip-copy" data-copy-id="${snip.id}" title="Kopieren"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span><span class="sfhl-fav${snip.favorite?' on':''}" data-fav-id="${snip.id}" title="Favorit">★</span></div><div class="sfhl-snip-preview">${escH(plainPrev)}${plainPrev.length>=80?'\u2026':''}</div>`;
     return row;
   }
 
-  // Kategorie-Datalist befüllen (für Editor-Dropdown)
+  // Ordner-Datalist befüllen (für Editor-Dropdown) — auch leere, explizit erstellte Ordner
   function updateCatDatalist() {
     const dl = document.getElementById('sfhl-cat-list'); if (!dl) return;
-    const cats = [...new Set(SNIPPETS.map(s => s.category).filter(Boolean))].sort((a,b) => a.localeCompare(b,'de'));
+    const cats = [...new Set([...SNIPPETS.map(s => s.category), ...loadCatOrder()].filter(Boolean))].sort((a,b) => a.localeCompare(b,'de'));
     dl.innerHTML = cats.map(cat => `<option value="${escH(cat)}">`).join('');
   }
 
@@ -2884,9 +2882,32 @@
       SNIPPETS.map(s => `<option value="${escH(s.id)}">${escH(prefix+s.trigger)} — ${escH(s.label)}</option>`).join('');
   }
 
-  // Click snippet row or category header -> open editor
+  // Click snippet row or folder header -> open editor
   snipListEl.addEventListener('click', e => {
     if (e.target.closest('.sfhl-snip-grip')) return; // Grip = nur D&D, kein Editor öffnen
+    // v4.6.6: leeren Ordner löschen
+    const delC = e.target.closest('.sfhl-cat-del');
+    if (delC) {
+      const cat = delC.closest('.sfhl-cat-hdr')?.dataset.cat;
+      if (cat) { saveCatOrder(loadCatOrder().filter(c => c !== cat)); renderSnippets(); toast('Ordner gelöscht', 'info'); }
+      return;
+    }
+    // v4.6.5: Ordner per Pfeil sortieren — Reihenfolge wird persistiert.
+    // v4.6.6: volle Order-Liste mergen statt überschreiben (Suche darf keine Ordner verwerfen)
+    const mvC = e.target.closest('.sfhl-cat-up,.sfhl-cat-down');
+    if (mvC) {
+      const cat = mvC.closest('.sfhl-cat-hdr')?.dataset.cat;
+      const vis = [...snipListEl.querySelectorAll('.sfhl-cat-hdr')].map(h => h.dataset.cat).filter(c => c !== '★ Favoriten' && c !== '(Kein Ordner)');
+      const full = vis.slice();
+      for (const c of loadCatOrder()) if (!full.includes(c)) full.push(c);
+      const i = full.indexOf(cat);
+      const j = mvC.classList.contains('sfhl-cat-up') ? i - 1 : i + 1;
+      if (i >= 0 && j >= 0 && j < full.length) {
+        [full[i], full[j]] = [full[j], full[i]];
+        saveCatOrder(full); renderSnippets();
+      }
+      return;
+    }
     const ch = e.target.closest('.sfhl-cat-hdr');
     if (ch) {
       const cat = ch.dataset.cat; const body = ch.nextElementSibling;
@@ -2899,7 +2920,9 @@
     if (copyBtn) {
       e.stopPropagation();
       const snip = SNIPPETS.find(s => s.id === copyBtn.dataset.copyId); if (!snip) return;
-      let resolved = resolvePlaceholders(snip.body);
+      // FIX v4.6.4: Standard-Sprache respektieren — bei EN wird die EN-Variante kopiert (falls vorhanden)
+      const bodyForCopy = (loadDefaultLang() === 'en' && snip.bodyEn) ? snip.bodyEn : snip.body;
+      let resolved = resolvePlaceholders(bodyForCopy);
       const plain = htmlToPlain(resolveLinks(resolved, false)).replace(/\{[|]?\}/g, '');
       navigator.clipboard.writeText(plain).then(
         () => toast('In Zwischenablage kopiert', 'success', 1800),
@@ -2922,18 +2945,21 @@
     openSnipEditor(snip);
   });
 
-  // Kategorie umbenennen per Doppelklick (#7)
+  // Ordner umbenennen per Doppelklick (#7)
   snipListEl.addEventListener('dblclick', e => {
     const nameEl = e.target.closest('.sfhl-cat-name');
     if (!nameEl) return;
     const ch = nameEl.closest('.sfhl-cat-hdr'); if (!ch) return;
     const oldCat = ch.dataset.cat;
-    if (oldCat === '★ Favoriten' || oldCat === '(Keine Kategorie)') return;
-    const newCat = prompt('Kategorie umbenennen:', oldCat);
+    if (oldCat === '★ Favoriten' || oldCat === '(Kein Ordner)') return;
+    const newCat = prompt('Ordner umbenennen:', oldCat);
     if (!newCat || !newCat.trim() || newCat.trim() === oldCat) return;
     SNIPPETS.forEach(s => { if (s.category === oldCat) s.category = newCat.trim(); });
     if (collapsedSnipCats.has(oldCat)) { collapsedSnipCats.delete(oldCat); collapsedSnipCats.add(newCat.trim()); }
-    saveSnippets(); renderSnippets(); toast('Kategorie umbenannt', 'success');
+    // v4.6.5: gespeicherte Ordner-Reihenfolge mit umbenennen
+    const _ord = loadCatOrder(); const _oi = _ord.indexOf(oldCat);
+    if (_oi !== -1) { _ord[_oi] = newCat.trim(); saveCatOrder(_ord); }
+    saveSnippets(); renderSnippets(); toast('Ordner umbenannt', 'success');
   });
 
   // Snippets Drag & Drop (#9)
@@ -2975,14 +3001,22 @@
   $('.sfhl-snip-add-toggle').onclick = () => {
     openSnipEditor(null); // null = add mode
   };
-
-  function rteToggle(isRich) {
-    // Editor ist jetzt immer sichtbar (contenteditable für beide Modi).
-    // richText-Checkbox steuert nur ob HTML oder Plaintext gespeichert/eingefügt wird.
-    // Kein visueller Unterschied — nur das Speicherformat ändert sich.
-  }
+  // v4.6.6: Snippet-Ordner erstellen (wie bei Markierung)
+  $('.sfhl-snip-folder-add-btn').onclick = () => {
+    const name = (prompt('Name des neuen Ordners:') || '').trim().slice(0, 60);
+    if (!name) return;
+    if (name === '★ Favoriten' || name === '(Kein Ordner)') { toast('Dieser Name ist reserviert', 'error'); return; }
+    const o = loadCatOrder();
+    if (o.includes(name) || SNIPPETS.some(s => s.category === name)) { toast('Ordner existiert bereits', 'error'); return; }
+    o.push(name); saveCatOrder(o); renderSnippets();
+    toast('Ordner erstellt — beim Snippet im Feld "Ordner" auswählen', 'success', 4000);
+  };
 
   let _editorLang = 'de'; // aktuell aktive Sprache im Editor (#34)
+  // FIX v4.6.4 (Bug 4): Editor-Inhalte DE/EN in lokalem Puffer statt direkt im SNIPPETS-
+  // Objekt — vorher ging beim Speichern im EN-Tab der DE-Text eines neuen Snippets
+  // verloren, und Abbrechen nach Sprachwechsel persistierte Änderungen ungewollt.
+  let _editorBodies = { de: '', en: '' };
 
   function openSnipEditor(snip) {
     editingSnipId = snip ? snip.id : null;
@@ -2992,16 +3026,15 @@
     $('.sfhl-ed-label').value = snip ? snip.label : '';
     $('.sfhl-ed-category').value = snip ? snip.category : '';
     const rb = $('.sfhl-rte-body');
-    if (snip) {
-      rb.innerHTML = snip.richText ? snip.body : escH(snip.body).replace(/\n/g,'<br>');
-    } else {
-      rb.innerHTML = '';
-    }
+    _editorBodies = {
+      de: snip ? (snip.richText ? snip.body : escH(snip.body).replace(/\n/g,'<br>')) : '',
+      en: snip ? (snip.bodyEn || '') : ''
+    };
+    rb.innerHTML = _editorBodies.de;
     // Sprach-Tabs zurücksetzen (#34)
     snipEditor.querySelectorAll('.sfhl-lang-tab').forEach(t => t.classList.toggle('active', t.dataset.lang === 'de'));
     $('.sfhl-ed-delete').style.display = snip ? 'block' : 'none';
     $('.sfhl-ed-duplicate').style.display = snip ? 'block' : 'none';
-    $('.sfhl-ed-share').style.display = snip ? 'block' : 'none';
     snipEditor.classList.add('vis');
     panel.querySelector('[data-tab="snippets"] .sfhl-add-bar').style.display = 'none';
     updateSnipInsertDropdown();
@@ -3013,21 +3046,13 @@
     const lt = e.target.closest('.sfhl-lang-tab'); if (!lt) return;
     const lang = lt.dataset.lang;
     if (lang === _editorLang) return;
-    // Aktuellen Inhalt im Snippet speichern (in memory, nicht persistieren)
+    // FIX v4.6.4 (Bug 4): über den lokalen Puffer wechseln — funktioniert auch für neue
+    // Snippets (editingSnipId null) und fasst das SNIPPETS-Objekt nicht an.
     const rb = $('.sfhl-rte-body');
-    if (editingSnipId) {
-      const snip = SNIPPETS.find(s => s.id === editingSnipId);
-      if (snip) {
-        if (_editorLang === 'de') snip.body = rb.innerHTML;
-        else snip.bodyEn = rb.innerHTML;
-      }
-    }
+    _editorBodies[_editorLang] = rb.innerHTML;
     _editorLang = lang;
     snipEditor.querySelectorAll('.sfhl-lang-tab').forEach(t => t.classList.toggle('active', t.dataset.lang === lang));
-    if (editingSnipId) {
-      const snip = SNIPPETS.find(s => s.id === editingSnipId);
-      if (snip) rb.innerHTML = lang === 'de' ? (snip.body||'') : (snip.bodyEn||'');
-    }
+    rb.innerHTML = _editorBodies[lang] || '';
   });
 
 
@@ -3099,8 +3124,11 @@
   function showPhPicker(btn) {
     if (phPicker.classList.contains('vis')) { phPicker.classList.remove('vis'); return; }
     // Werte aus Cache auflösen für Vorschau
-    const resolved = resolvePlaceholders('{name}|{datum}|{case}|{nachname}|{kontakt}|{telefon}|{firma}|{seriennummer}');
-    const vals = resolved.split('|');
+    // FIX v4.6.4: Steuerzeichen als Trenner statt "|" — Feldwerte können Pipes enthalten
+    // (z. B. Firmenname "A | B"), was die Zuordnung verschoben hätte.
+    const SEP = '\u0001';
+    const resolved = resolvePlaceholders(['{name}','{datum}','{case}','{nachname}','{kontakt}','{telefon}','{firma}','{seriennummer}'].join(SEP));
+    const vals = resolved.split(SEP);
     const valMap = { '{name}':vals[0], '{datum}':vals[1], '{case}':vals[2], '{nachname}':vals[3], '{kontakt}':vals[4], '{telefon}':vals[5], '{firma}':vals[6], '{seriennummer}':vals[7] };
 
     phPicker.innerHTML = '<div class="sfhl-ph-hdr">Platzhalter wählen — Klick zum Einfügen</div>' +
@@ -3236,7 +3264,9 @@
   };
 
   $('.sfhl-ed-save').onclick = () => {
-    const trigger = ($('.sfhl-ed-trigger').value||'').trim().replace(/^[;/:!@]+/,''); // strip prefix chars
+    // FIX v4.6.4: Leerzeichen im Trigger entfernen — Trigger mit Leerzeichen sind
+    // über das Tippen nie erreichbar (Wortgrenze beendet die Trigger-Erkennung).
+    const trigger = ($('.sfhl-ed-trigger').value||'').replace(/\s+/g,'').replace(/^[;/:!@]+/,''); // strip prefix chars + whitespace
     if (!trigger) { $('.sfhl-ed-trigger').focus(); return; }
     // QF1: Doppelte Trigger machen Auto-Wrap + Einfügen mehrdeutig (erstes gefundenes Snippet gewinnt)
     const dup = SNIPPETS.find(s => s.trigger.toLowerCase() === trigger.toLowerCase() && s.id !== editingSnipId);
@@ -3244,13 +3274,15 @@
       $('.sfhl-ed-trigger').focus(); return;
     }
     const rb = $('.sfhl-rte-body');
-    const bodyVal = rb.innerHTML || '';
     const existingSnip = editingSnipId ? SNIPPETS.find(s => s.id === editingSnipId) : null;
-    // Wenn gerade EN aktiv: EN-Body lesen, DE-Body aus snip.body
-    const isEditingEn = _editorLang === 'en';
-    const deBody = isEditingEn ? (existingSnip?.body||'') : bodyVal;
-    const enBody = isEditingEn ? bodyVal : (existingSnip?.bodyEn||'');
-    const data = { trigger, label: $('.sfhl-ed-label').value.trim() || trigger, body: deBody, bodyEn: enBody, richText: true, category: $('.sfhl-ed-category').value.trim(), favorite: existingSnip ? !!existingSnip.favorite : false, usageCount: existingSnip ? (existingSnip.usageCount||0) : 0 };
+    // FIX v4.6.4 (Bug 4): beide Sprachvarianten aus dem Editor-Puffer lesen —
+    // der DE-Text bleibt auch erhalten, wenn gerade der EN-Tab aktiv ist (auch bei neuen Snippets).
+    _editorBodies[_editorLang] = rb.innerHTML || '';
+    const deBody = _editorBodies.de;
+    const enBody = _editorBodies.en;
+    const data = { trigger, label: $('.sfhl-ed-label').value.trim() || trigger, body: deBody, bodyEn: enBody, richText: true, category: $('.sfhl-ed-category').value.trim(), favorite: existingSnip ? !!existingSnip.favorite : false };
+    // v4.6.6: neuen Ordner in die Reihenfolge-Liste aufnehmen
+    if (data.category) { const _o = loadCatOrder(); if (!_o.includes(data.category)) { _o.push(data.category); saveCatOrder(_o); } }
     if (editingSnipId) {
       const snip = SNIPPETS.find(s => s.id === editingSnipId);
       if (snip) Object.assign(snip, data);
@@ -3293,55 +3325,22 @@
     const copy = { ...orig, id: uid(), trigger: orig.trigger + '2', label: orig.label + ' (Kopie)',
       body: _editorLang === 'de' ? rb.innerHTML : orig.body,
       bodyEn: _editorLang === 'en' ? rb.innerHTML : (orig.bodyEn||''),
-      favorite: false, usageCount: 0 };
+      favorite: false };
     SNIPPETS.push(copy);
     saveSnippets(); renderSnippets();
     openSnipEditor(copy);
     toast('Kopie erstellt', 'success');
   };
 
-  // Snippet teilen via URL (#35)
-  $('.sfhl-ed-share').onclick = () => {
-    if (!editingSnipId) return;
-    const snip = SNIPPETS.find(s => s.id === editingSnipId); if (!snip) return;
-    try {
-      const data = { trigger: snip.trigger, label: snip.label, body: snip.body, bodyEn: snip.bodyEn||'', category: snip.category };
-      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
-      const url = location.origin + location.pathname + '#sfhl-share=' + encoded;
-      navigator.clipboard.writeText(url).then(() => toast('Link kopiert! Kollege kann ihn in SF öffnen.', 'success', 4000));
-    } catch { toast('Teilen fehlgeschlagen', 'error'); }
-  };
 
-  // Beim Seitenstart: Import-Link prüfen (#35)
-  (function checkShareUrl() {
-    const hash = location.hash;
-    if (!hash.startsWith('#sfhl-share=')) return;
-    try {
-      const encoded = hash.replace('#sfhl-share=', '');
-      const data = JSON.parse(decodeURIComponent(escape(atob(encoded))));
-      if (!data.trigger) return;
-      history.replaceState(null, '', location.pathname + location.search); // Hash entfernen
-      setTimeout(() => {
-        const validated = sanitizeSnippetImport(data);
-        if (!validated) return;
-        if (confirm(`Snippet "${validated.label}" (;;${validated.trigger}) importieren?`)) {
-          const existing = SNIPPETS.find(s => s.trigger === validated.trigger);
-          if (existing) { Object.assign(existing, validated); }
-          else { SNIPPETS.push({ id: uid(), ...validated, favorite: false, usageCount: 0 }); }
-          saveSnippets(); renderSnippets();
-          toast(`Snippet "${validated.label}" importiert!`, 'success', 4000);
-        }
-      }, 800);
-    } catch {}
-  })();
 
   // Settings
   setPrefix.onchange = () => { savePrefix(setPrefix.value); renderSnippets(); updateWrapDropdowns(); };
   setUname.onchange = () => saveUname(setUname.value);
+  setHomeAddr.onchange = () => { saveHomeAddr(setHomeAddr.value); toast(setHomeAddr.value.trim() ? 'Adresse gespeichert' : 'Adresse entfernt', 'info'); };
   setLang.onchange = () => {
     saveDefaultLang(setLang.value);
-    applyTranslations();
-    toast('Default language: ' + (setLang.value==='en'?'English':'Deutsch'), 'info');
+    toast('Snippet-Sprache: ' + (setLang.value==='en'?'English':'Deutsch'), 'info');
   };
   wrapCb.onchange = () => { saveWrapOn(wrapCb.checked); toast(wrapCb.checked ? 'Auto-Wrap an' : 'Auto-Wrap aus', 'info'); };
   slaBlinkCb.onchange = () => { saveSla('blink', slaBlinkCb.checked); toast(slaBlinkCb.checked ? 'Tab-Blinken an' : 'Tab-Blinken aus', 'info'); };
@@ -3356,7 +3355,9 @@
     }
     saveSla('notify', slaNotifyCb.checked); toast(slaNotifyCb.checked ? 'Benachrichtigung an' : 'Benachrichtigung aus', 'info');
   };
+  legendCb.onchange = () => { saveLegendOn(legendCb.checked); if(legendCb.checked){ if(isCaseListPage())highlightRows(false); } else removeLegend(); toast(legendCb.checked ? 'Farb-Legende an' : 'Farb-Legende aus', 'info'); };
   selRuleCb.onchange = () => { saveSelRuleOn(selRuleCb.checked); if(!selRuleCb.checked)hideSelButton(); toast(selRuleCb.checked ? 'Regel aus Auswahl an' : 'Regel aus Auswahl aus', 'info'); };
+  btnPosSel.onchange = () => { saveBtnPos(btnPosSel.value); updateVis(); const lbl = btnPosSel.value === 'header' ? 'SF-Kopfleiste' : 'schwebend'; toast('Button: '+lbl, 'info'); };
   wrapAnrSel.onchange = () => saveWrapAnrede(wrapAnrSel.value);
   wrapSigSel.onchange = () => saveWrapSignatur(wrapSigSel.value);
 
@@ -3463,10 +3464,8 @@
     finishInsert(el, triggerInfo, snippet, fullBody);
   }
 
+
   function finishInsert(el, triggerInfo, snippet, fullBody) {
-    // Usage tracken (#15) — erst beim tatsächlichen Einfügen, nicht bei abgebrochener Vorschau
-    snippet.usageCount = (snippet.usageCount||0) + 1;
-    addRecent(snippet.id);
     saveSnippets();
 
     const insMeta = {}; // Feature 1 (v4.4.0): sammelt leer aufgelöste Pflicht-Platzhalter
@@ -3604,49 +3603,9 @@
     // Feature 1 (v4.4.0): Warnung, wenn Anrede/Nachname/Kontakt leer aufgelöst wurden
     if (insMeta.empty && insMeta.empty.length) {
       const fields = insMeta.empty.map(t).join(', ');
-      toast('⚠️ ' + fields + ': ' + t('konnte nicht ermittelt werden – bitte vor dem Senden prüfen.'), 'error', 6000);
+      console.warn('[SFHL] Platzhalter nicht aufgelöst:', fields);
     }
     closeDropdown(); // FIX #15: orphaned } from if(true) removed
-  }
-
-  // v4.9.0 Fuzzy-Fallback fürs Snippet-Dropdown: greift nur, wenn die strikte
-  // Suche (startsWith/includes) nichts findet — tippfehlertolerant, ohne die
-  // exakte Suche zu verändern. Levenshtein mit früher Schranke.
-  function boundedLev(a, b, max) {
-    const la = a.length, lb = b.length;
-    if (Math.abs(la - lb) > max) return max + 1;
-    let prev = []; for (let j = 0; j <= lb; j++) prev[j] = j;
-    for (let i = 1; i <= la; i++) {
-      const cur = [i]; let rowMin = i; const ca = a.charCodeAt(i - 1);
-      for (let j = 1; j <= lb; j++) {
-        const cost = ca === b.charCodeAt(j - 1) ? 0 : 1;
-        const v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
-        cur[j] = v; if (v < rowMin) rowMin = v;
-      }
-      if (rowMin > max) return max + 1; // kann nicht mehr unter die Schranke
-      prev = cur;
-    }
-    return prev[lb];
-  }
-  // 0 = kein Treffer, sonst >0 (größer = besser). Trigger zählt am stärksten.
-  function fuzzyScore(query, s) {
-    const q = query;
-    const maxDist = q.length <= 3 ? 1 : q.length <= 6 ? 2 : 3;
-    const fields = [[s.trigger, 1], [s.label, 0.7], [s.category, 0.5]];
-    let best = 0;
-    for (const [raw, weight] of fields) {
-      const txt = (raw || '').toLowerCase(); if (!txt) continue;
-      const tokens = [txt, ...txt.split(/[\s\-_/]+/)].filter(Boolean);
-      for (const tok of tokens) {
-        // q gegen den Wortanfang vergleichen (Länge q bzw. q+1) → Tippfehler vorn
-        for (const len of [q.length, q.length + 1]) {
-          const piece = tok.slice(0, len); if (!piece) continue;
-          const d = boundedLev(q, piece, maxDist);
-          if (d <= maxDist) { const score = (1 - d / (q.length + 1)) * weight; if (score > best) best = score; }
-        }
-      }
-    }
-    return best;
   }
 
   function showDropdown(el, triggerInfo) {
@@ -3661,7 +3620,7 @@
       query = query.replace(/^de[\s:]*/, '');
     }
     const activeLang = forceLang || loadDefaultLang();
-    const strictMatches = SNIPPETS
+    const matches = SNIPPETS
       .filter(s => {
         // Im EN-Modus nur Snippets mit EN-Variante
         if (forceLang === 'en' && !s.bodyEn) return false;
@@ -3669,25 +3628,8 @@
       })
       .slice().sort((a, b) => {
         if (b.favorite !== a.favorite) return (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0);
-        return (b.usageCount||0) - (a.usageCount||0);
+        return a.trigger.localeCompare(b.trigger, 'de');
       });
-    // Fuzzy-Fallback (Tippfehlertoleranz): nur wenn die strikte Suche leer bleibt
-    let isFuzzy = false;
-    let matches = strictMatches;
-    if (strictMatches.length === 0 && query.length >= 2) {
-      isFuzzy = true;
-      matches = SNIPPETS
-        .filter(s => !(forceLang === 'en' && !s.bodyEn))
-        .map(s => ({ s, score: fuzzyScore(query, s) }))
-        .filter(x => x.score > 0)
-        .sort((a, b) => {
-          if (b.s.favorite !== a.s.favorite) return (b.s.favorite ? 1 : 0) - (a.s.favorite ? 1 : 0);
-          if (b.score !== a.score) return b.score - a.score;
-          return (b.s.usageCount || 0) - (a.s.usageCount || 0);
-        })
-        .slice(0, 8)
-        .map(x => x.s);
-    }
     if (matches.length === 0) { closeDropdown(); return; }
 
     const prefix = loadPrefix();
@@ -3697,9 +3639,8 @@
       const favBadge = s.favorite ? '<span style="color:#f59e0b;margin-left:2px">\u2605</span>' : '';
       const safeLang = escH((['de','en'].includes(activeLang) ? activeLang : 'de').toUpperCase());
       const langBadge = s.bodyEn ? `<span style="font-size:9px;background:${activeLang==='en'?'#dbeafe':'#f3f4f6'};color:${activeLang==='en'?'#1d4ed8':'#6b7280'};padding:0 4px;border-radius:3px;margin-left:4px">${safeLang}</span>` : '';
-      const numBadge = i < 9 ? `<span class="sfhl-dd-num" title="Alt+${i+1}">${i+1}</span>` : '';
-      return `<div class="sfhl-dd-item${i===0?' selected':''}" data-snip-id="${s.id}"><div class="sfhl-dd-item-top">${numBadge}<span class="sfhl-dd-trigger">${escH(prefix+s.trigger)}</span><span class="sfhl-dd-label">${escH(s.label)}${favBadge}${langBadge}</span><span class="sfhl-dd-cat">${escH(s.category)}</span></div><div class="sfhl-dd-preview">${escH(preview)}${preview.length>=70?'\u2026':''}</div></div>`;
-    }).join('') + `<div class="sfhl-dd-hint"><span>${isFuzzy?'<span style="color:#f59e0b;font-weight:600">\u2248 \u00e4hnliche Treffer</span> \u2022 ':''}${loadWrapOn()?'<span style="color:#10b981;font-weight:600">\u2713 Anrede+Signatur</span> \u2022 ':''}Enter = einf\u00fcgen \u2022 \u2191\u2193 = navigieren \u2022 Alt+1\u20139 = direkt \u2022 Esc = schlie\u00dfen</span></div>`;
+      return `<div class="sfhl-dd-item${i===0?' selected':''}" data-snip-id="${s.id}"><div class="sfhl-dd-item-top"><span class="sfhl-dd-trigger">${escH(prefix+s.trigger)}</span><span class="sfhl-dd-label">${escH(s.label)}${favBadge}${langBadge}</span><span class="sfhl-dd-cat">${escH(s.category)}</span></div><div class="sfhl-dd-preview">${escH(preview)}${preview.length>=70?'\u2026':''}</div></div>`;
+    }).join('') + `<div class="sfhl-dd-hint"><span>${loadWrapOn()?'<span style="color:#10b981;font-weight:600">\u2713 Anrede+Signatur</span> \u2022 ':''}Enter = einf\u00fcgen \u2022 \u2191\u2193 = navigieren \u2022 Esc = schlie\u00dfen</span></div>`;
 
     const pos = getCaretCoords(el);
     let top = pos.top, left = pos.left;
@@ -3775,6 +3716,7 @@
   // checkTrigger erhält das ELEMENT (nicht das Event) — composedPath ist da schon ausgewertet
   const checkTrigger = debounce((el) => {
     if (!el) return;
+    if (!loadSnipOn()) { closeDropdown(); return; }
     const info = getTriggerText(el);
 if (info) { showDropdown(el, info); } else { closeDropdown(); }
   }, 150);
@@ -3802,19 +3744,6 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   // Keyboard-Handler — muss auch in iframe-Dokumenten registriert werden
   function onKeydownEvent(e) {
     if (!dropdown.classList.contains('vis') || !dropdown._matches) return;
-    // Alt+1…9: n-tes Snippet direkt einfügen. e.code statt e.key, damit es
-    // layout-unabhängig ist (Alt erzeugt je nach Tastatur Sonderzeichen als e.key).
-    if (e.altKey && !e.ctrlKey && !e.metaKey) {
-      const dm = /^(?:Digit|Numpad)([1-9])$/.exec(e.code || '');
-      if (dm) {
-        const idx = +dm[1] - 1;
-        if (idx < dropdown._matches.length) {
-          e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-          insertSnippet(dropdown._el, dropdown._triggerInfo, dropdown._matches[idx]);
-        }
-        return;
-      }
-    }
     const items = dropdown.querySelectorAll('.sfhl-dd-item');
     if (e.key === 'ArrowDown') { e.preventDefault(); ddSelectedIdx = Math.min(ddSelectedIdx + 1, items.length - 1); items.forEach((it,i) => it.classList.toggle('selected', i === ddSelectedIdx)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); ddSelectedIdx = Math.max(ddSelectedIdx - 1, 0); items.forEach((it,i) => it.classList.toggle('selected', i === ddSelectedIdx)); }
@@ -3877,6 +3806,9 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     } catch { return false; }
   }
 
+  // FIX v4.6.4: pro iframe nur EIN Poller/Listener — deepScanIframes läuft periodisch
+  // und hätte sonst für dasselbe (noch nicht bereite) iframe immer neue Intervalle gestartet.
+  const _pendingIframes = new WeakSet();
   function tryAttachIframe(iframe) {
     try {
       const doc = iframe.contentDocument || iframe.contentWindow?.document;
@@ -3888,6 +3820,8 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
       }
       // Ohne src kann contentDocument noch nicht bereit sein → retry
       if (!doc || !doc.body) {
+        if (_pendingIframes.has(iframe)) return;
+        _pendingIframes.add(iframe);
         // load-Event abwarten
         iframe.addEventListener('load', () => {
           setTimeout(() => {
@@ -4073,13 +4007,7 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   // FIX #8: Regex-Cache auf 200 Einträge begrenzt — verhindert unbegrenztes Speicherwachstum
   const _regexCache = new Map();
   const _REGEX_CACHE_MAX = 200;
-  function matchesSingleCondition(lowTxt, cond) {
-    cond = cond.trim();
-    if (!cond) return true;
-    const isNot = cond.startsWith('!');
-    if (isNot) cond = cond.slice(1).trim();
-    if (!cond) return true;
-    let result;
+  function _condHits(lowTxt, cond) {
     const rxMatch = cond.match(/^\/(.+)\/([gimsuy]*)$/);
     if (rxMatch) {
       const key = rxMatch[1] + '/' + rxMatch[2];
@@ -4089,17 +4017,59 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
         catch { _regexCache.set(key, null); }
       }
       const rx = _regexCache.get(key);
-      result = rx ? rx.test(lowTxt) : lowTxt.includes(norm(cond));
+      return rx ? rx.test(lowTxt) : lowTxt.includes(norm(cond));
+    }
+    return lowTxt.includes(norm(cond));
+  }
+  function matchesSingleCondition(lowTxt, cond, cols) {
+    cond = cond.trim();
+    if (!cond) return true;
+    const isNot = cond.startsWith('!');
+    if (isNot) cond = cond.slice(1).trim();
+    if (!cond) return true;
+    let result;
+    // v4.7.0: "Spalte=Wert" — sucht nur in der Zelle, deren Spaltenüberschrift den Namen
+    // enthält. Ohne Header-Infos (cols=null) zählt die Bedingung als nicht erfüllt,
+    // damit sie nicht überraschend als Volltextsuche nach "spalte=wert" fehlschlägt.
+    const eq = cond.startsWith('/') ? -1 : cond.indexOf('=');
+    if (eq > 0) {
+      const colName = norm(cond.slice(0, eq).trim());
+      const val = cond.slice(eq + 1).trim();
+      const cell = (cols && colName && val) ? cols.find(c => c.name.includes(colName)) : null;
+      result = cell ? _condHits(cell.text, val) : false;
     } else {
-      result = lowTxt.includes(norm(cond));
+      result = _condHits(lowTxt, cond);
     }
     return isNot ? !result : result;
+  }
+  // FIX v4.6.4 (Bug 1): "|" innerhalb einer /regex/ darf nicht als ODER-Trenner gedeutet
+  // werden (z. B. /urgent|eilig/i). Nach dem naiven Split werden Teile wieder zusammen-
+  // gefügt, solange die letzte Bedingung der Vorgruppe eine begonnene, aber noch nicht
+  // geschlossene Regex ist (beginnt mit "/", endet noch nicht auf "/flags").
+  function splitOrGroups(term) {
+    const raw = String(term || '').split(/\s*\|\s*|\s+OR\s+/i);
+    const groups = [];
+    for (const part of raw) {
+      if (groups.length) {
+        const prev = groups[groups.length - 1];
+        const lastCond = prev.split(/\s\+\s/).pop().trim().replace(/^!/, '').trim();
+        // v4.7.0: auch "Spalte=/regex..." erkennen — der Regex-Teil steht hinter dem "="
+        const rxPart = lastCond.startsWith('/') ? lastCond
+          : (lastCond.indexOf('=') > 0 ? lastCond.slice(lastCond.indexOf('=') + 1).trim() : '');
+        if (rxPart.startsWith('/') && !/^\/(.+)\/[gimsuy]*$/.test(rxPart)) {
+          groups[groups.length - 1] = prev + '|' + part;
+          continue;
+        }
+      }
+      groups.push(part);
+    }
+    return groups;
   }
   // QF2: Ungültige /regex/ fällt in matchesSingleCondition still auf Textsuche zurück —
   // diese Funktion findet solche Teile, damit die UI beim Speichern warnen kann.
   function invalidRegexIn(term) {
     const bad = [];
-    for (const group of String(term || '').split(/\s*\|\s*|\s+OR\s+/i)) {
+    for (const group of splitOrGroups(term)) {
       for (let part of group.split(/\s\+\s/)) {
         part = part.trim();
         if (part.startsWith('!')) part = part.slice(1).trim();
@@ -4109,40 +4079,89 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     }
     return bad;
   }
-  function matchesRule(txt, term) {
+  function matchesRule(txt, term, cols) {
     if (!term) return false;
     const low = norm(txt);
     // OR hat niedrigere Priorität als AND: "A + B | C + D" = "(A AND B) OR (C AND D)"
-    // Trennt bei " | " oder " OR " (case-insensitive, mit Leerzeichen)
-    const orGroups = term.split(/\s*\|\s*|\s+OR\s+/i);
+    // Trennt bei " | " oder " OR " (case-insensitive); Pipes in /regex/ bleiben erhalten.
+    const orGroups = splitOrGroups(term);
     return orGroups.some(group => {
       const andParts = group.split(/\s\+\s/);
-      return andParts.every(part => matchesSingleCondition(low, part));
+      return andParts.every(part => matchesSingleCondition(low, part, cols));
     });
   }
-  function bestMatch(txt) { if(!txt)return null;for(const e of RULES){if(e.enabled&&e.term&&matchesRule(txt,e.term))return e;}return null; }
+  function bestMatch(txt, cols) { if(!txt)return null;for(const e of RULES){if(e.enabled&&e.term&&matchesRule(txt,e.term,cols))return e;}return null; }
+  // v4.7.0: Spaltennamen pro Tabelle für "Spalte=Wert"-Bedingungen (Header-Cache).
+  // row.cells und thead-th laufen index-parallel (beide enthalten Checkbox-/Nummernspalten).
+  const _headerCache = new WeakMap();
+  function _getHeaderNames(table) {
+    if (_headerCache.has(table)) return _headerCache.get(table);
+    const names = [...table.querySelectorAll('thead th')].map(th =>
+      norm(th.getAttribute('aria-label') || th.getAttribute('title') || th.innerText || th.textContent || '').trim());
+    _headerCache.set(table, names);
+    return names;
+  }
+  function getRowCols(row) {
+    const table = row.closest('table'); if (!table) return null;
+    const names = _getHeaderNames(table); if (!names.some(n => n)) return null;
+    const cells = row.cells, cols = [];
+    for (let i = 0; i < cells.length && i < names.length; i++) {
+      if (names[i]) cols.push({ name: names[i], text: norm(cells[i].innerText || cells[i].textContent || '') });
+    }
+    return cols.length ? cols : null;
+  }
+  // Spalten nur einlesen, wenn mindestens eine aktive Regel "=" nutzt (spart innerText-Reads)
+  function anyColRule() { return RULES.some(r => r.enabled && r.term && r.term.includes('=')); }
   function markRow(row,m) { row.classList.add('tm-sfhl-mark'); row.style.setProperty('--sfhl-bg',m.color,'important'); row.dataset.sfhlRule=m.id; }
   function unmarkRow(row) { row.classList.remove('tm-sfhl-mark','sfhl-new-match'); row.style.removeProperty('--sfhl-bg'); delete row.dataset.sfhlRule; }
   function updateHighlightCount() { const n=document.querySelectorAll('.tm-sfhl-mark').length;const c=triggerBtn.querySelector('.sfhl-count');if(c)c.textContent=n>0?`${n} markiert`:''; }
   // innerText wird bevorzugt: SF Locker Service patcht es für Synthetic-Shadow-Traversal.
   // textContent als Fallback für Umgebungen ohne innerText (z.B. SVG-Knoten).
-  function highlightRows(full=false) { const rows=getRows();if(rows.length===0)return false;for(const row of rows){if(full)unmarkRow(row);const cells=row.querySelectorAll('td');let txt='';for(const c of cells)txt+=' '+(c.innerText||c.textContent||'');const m=bestMatch(txt);if(m)markRow(row,m);else if(full)unmarkRow(row);}updateHighlightCount();return true; }
+  function highlightRows(full=false) { if(!loadRulesOn()){if(full){const rows=getRows();rows.forEach(r=>unmarkRow(r));}updateHighlightCount();removeLegend();return false;} const rows=getRows();if(rows.length===0)return false;const needCols=anyColRule();for(const row of rows){if(full)unmarkRow(row);const cells=row.querySelectorAll('td');let txt='';for(const c of cells)txt+=' '+(c.innerText||c.textContent||'');const m=bestMatch(txt,needCols?getRowCols(row):null);if(m)markRow(row,m);else if(full)unmarkRow(row);}updateHighlightCount();ensureLegend(rows);return true; }
+
+  // ===== v4.5.0 #2: Farb-Legende über der Case-Liste =====
+  function removeLegend(){ const l=document.querySelector('.sfhl-legend'); if(l)l.remove(); }
+  function ensureLegend(rows){
+    if(!isCaseListPage()||!loadLegendOn()){ removeLegend(); return; }
+    rows = rows && rows.length ? rows : getRows();
+    const table = rows.length ? rows[0].closest('table') : null;
+    if(!table||!table.parentElement){ removeLegend(); return; }
+    const hits = computeRuleHits();
+    const items = hits ? RULES.filter(r=>r.enabled&&r.term&&hits.get(r.id)>0) : [];
+    let leg = document.querySelector('.sfhl-legend');
+    if(!items.length){ if(leg)leg.remove(); return; }
+    if(!leg){ leg=document.createElement('div'); leg.className='sfhl-legend'; }
+    if(table.previousElementSibling!==leg) table.parentElement.insertBefore(leg, table);
+    leg.innerHTML = '<span class="sfhl-legend-ttl">Legende</span>' + items.map(r=>{
+      const term = r.term.length>30 ? r.term.slice(0,29)+'…' : r.term;
+      const bell = r.alarm ? '<span class="sfhl-legend-bell" title="SLA-Alarm aktiv">🔔</span>' : '';
+      return `<span class="sfhl-legend-chip" title="${escH(r.term)}"><span class="sfhl-legend-sw" style="background:${safeColor(r.color)}"></span>${escH(term)}${bell}<b>${hits.get(r.id)}</b></span>`;
+    }).join('');
+  }
 
   // ===== v4.5.0 #3: Regel aus Auswahl  +  v4.6.0: Geräte-Doku-Lookup =====
   let _selBtn=null;
   function hideSelButton(){ if(_selBtn){_selBtn.remove();_selBtn=null;} }
-  function showSelButton(x,y,label,title,onAct){
+  // v4.15.0: mehrere Buttons nebeneinander (z.B. GMaps + Route + Regel)
+  function showSelButtons(x,y,btns){
     hideSelButton();
-    _selBtn=document.createElement('div');
-    _selBtn.className='sfhl-sel-btn';
-    _selBtn.textContent=label;
-    _selBtn.title=title;
-    _selBtn.style.left=Math.round(x)+'px';
-    _selBtn.style.top=Math.round(y)+'px';
-    // mousedown statt click: verhindert, dass die Textauswahl vorher kollabiert
-    _selBtn.addEventListener('mousedown', ev=>{ ev.preventDefault(); ev.stopPropagation(); onAct(); hideSelButton(); });
-    document.body.appendChild(_selBtn);
+    const wrap=document.createElement('div');
+    wrap.className='sfhl-sel-wrap';
+    wrap.style.left=Math.round(x)+'px';
+    wrap.style.top=Math.round(y)+'px';
+    for(const b of btns){
+      const el=document.createElement('div');
+      el.className='sfhl-sel-btn';
+      el.textContent=b.label;
+      el.title=b.title;
+      // mousedown statt click: verhindert, dass die Textauswahl vorher kollabiert
+      el.addEventListener('mousedown', ev=>{ ev.preventDefault(); ev.stopPropagation(); b.onAct(); hideSelButton(); });
+      wrap.appendChild(el);
+    }
+    document.body.appendChild(wrap);
+    _selBtn=wrap;
   }
+  function showSelButton(x,y,label,title,onAct){ showSelButtons(x,y,[{label,title,onAct}]); }
   function createRuleFromSelection(term){
     if(RULES.some(r=>r.term===term)){ toast('Regel existiert bereits','info'); return; }
     RULES.unshift({ id:uid(), term, color:'#fff3a3', enabled:true, alarm:false });
@@ -4173,7 +4192,7 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   function showDokuPopup(x,y,text,type){
     hideDokuPopup();
     const cand = dokuCandidates(type, text);
-    const all = loadDokuLinks();
+    const all = loadDokuLinks().filter(l => l.enabled !== false);
     if(!all.length){ toast('Keine Doku-Vorlagen geladen — bitte Config in den Einstellungen importieren','info',4500); return; }
     const label = gt => (_DOKU_GROUPS.find(g=>g[0]===gt)||[gt,gt])[1];
     const groupHtml = gt => {
@@ -4206,6 +4225,24 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     if(r.bottom>window.innerHeight-8) pop.style.top=Math.max(8, y-r.height-16)+'px';
   }
 
+  // --- v4.15.0: Adress-Shortcuts (GMaps-Suche + Route von der eigenen Adresse) ---
+  // Heuristik für Adressen: mehrteiliger Text mit Zahl, der eine PLZ, eine
+  // Straße mit Hausnummer oder ein Komma enthält. Codes (ohne Leerzeichen)
+  // laufen vorher in detectCodeType und kollidieren daher nicht.
+  function looksLikeAddress(s){
+    if(!s || s.length<8 || s.length>80 || !/\s/.test(s) || !/\d/.test(s) || !/[A-Za-zÄÖÜäöüß]{3}/.test(s)) return false;
+    return /\b\d{5}\b/.test(s)
+        || /(straße|strasse|str\.|weg|platz|allee|gasse|ring|damm|ufer|chaussee)\s*\.?\s*\d/i.test(s)
+        || s.includes(',');
+  }
+  function mapsSearchUrl(q){ return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q); }
+  function mapsRouteUrl(from,to){ return 'https://www.google.com/maps/dir/?api=1&origin='+encodeURIComponent(from)+'&destination='+encodeURIComponent(to); }
+  function openRoute(dest){
+    const home=loadHomeAddr().trim();
+    if(!home){ toast('Bitte zuerst deine Adresse in den Einstellungen (Karten / Route) hinterlegen','info',5000); return; }
+    window.open(mapsRouteUrl(home,dest),'_blank','noopener');
+  }
+
   function getSelectionText(target, win){
     // Auswahl in <input>/<textarea> liefert getSelection() NICHT — direkt aus dem Feld lesen.
     const ae = target;
@@ -4226,7 +4263,7 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     return { x: e.pageX, y: e.pageY, win };
   }
   function handleSelectionMouseup(e){
-    if(e.target.closest && e.target.closest('.sfhl-panel,.sfhl-sel-btn,.sfhl-doku-pop,.sfhl-trigger')) return;
+    if(e.target.closest && e.target.closest('.sfhl-panel,.sfhl-sel-wrap,.sfhl-doku-pop,.sfhl-trigger')) return;
     const { x, y, win } = selEventCoords(e);
     setTimeout(()=>{ // Selektion ist erst nach dem mouseup final
       // unsichtbare Zeichen entfernen (Zero-Width, NBSP) und Whitespace normalisieren
@@ -4236,25 +4273,44 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
       const code=t.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g,'');
       const ct = loadDokuOn() ? detectCodeType(code) : null;
       if(ct){ showSelButton(x+6, y+10, '📄 Doku-Links', '„'+code+'" — Dokumentations-Links öffnen', ()=>showDokuPopup(x+6, y+10, code, ct)); return; }
-      if(loadSelRuleOn() && isCaseListPage()){ showSelButton(x+6, y+10, '➕ Regel aus Auswahl', '„'+t+'" als Markierungs-Regel anlegen', ()=>createRuleFromSelection(t)); return; }
+      // v4.15.0: Adresse markiert → GMaps-Suche + Route (Startadresse aus den Einstellungen)
+      if(loadDokuOn() && looksLikeAddress(t)){
+        const btns=[
+          { label:'🗺️ GMaps', title:'„'+t+'" in Google Maps suchen', onAct:()=>window.open(mapsSearchUrl(t),'_blank','noopener') },
+          { label:'🚗 Route', title:'Route von deiner Adresse (Einstellungen) nach „'+t+'"', onAct:()=>openRoute(t) },
+        ];
+        if(loadSelRuleOn() && isCaseListView()) btns.push({ label:'➕ Regel', title:'„'+t+'" als Markierungs-Regel anlegen', onAct:()=>createRuleFromSelection(t) });
+        showSelButtons(x+6, y+10, btns);
+        return;
+      }
+      // v4.14.0: nur auf echten Case-Listenansichten — auf WorkOrder-/Detailseiten stört der Button
+      if(loadSelRuleOn() && isCaseListView()){ showSelButton(x+6, y+10, '➕ Regel aus Auswahl', '„'+t+'" als Markierungs-Regel anlegen', ()=>createRuleFromSelection(t)); return; }
       hideSelButton();
     },10);
   }
   function handleSelectionMousedown(e){
-    if(_selBtn && !(e.target.closest && e.target.closest('.sfhl-sel-btn'))) hideSelButton();
+    if(_selBtn && !(e.target.closest && e.target.closest('.sfhl-sel-wrap'))) hideSelButton();
     if(_dokuPop && !(e.target.closest && e.target.closest('.sfhl-doku-pop'))) hideDokuPopup();
   }
   document.addEventListener('mouseup', handleSelectionMouseup);
   document.addEventListener('mousedown', handleSelectionMousedown, true);
-
-  function snapshotMarked() { const set=new Set();document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||c.textContent||'');set.add(t);});return set; }
+  // FIX v4.6.4: Zeilen über den Datensatz-Link (Record-Id) identifizieren statt über den
+  // Zeilentext — sonst gilt eine Zeile als "neu", sobald sich z. B. eine Alters-Spalte
+  // ("vor 5 Minuten" → "vor 6 Minuten") ändert → Fehlalarme. Text nur als Fallback.
+  function rowKey(r) {
+    try {
+      const a = r.querySelector('a[href*="/lightning/r/"]');
+      if (a) { const m = (a.getAttribute('href')||'').match(/\/r\/\w+\/([a-zA-Z0-9]{15,18})\//); if (m) return 'id:'+m[1]; }
+    } catch {}
+    const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||c.textContent||'');return 'tx:'+t;
+  }
+  function snapshotMarked() { const set=new Set();document.querySelectorAll('.tm-sfhl-mark').forEach(r=>set.add(rowKey(r)));return set; }
   function highlightAndBlink(snap) {
     highlightRows(true);
     if(!snap)return;
     let alarmHits=0;
     document.querySelectorAll('.tm-sfhl-mark').forEach(r=>{
-      const cells=r.querySelectorAll('td');let t='';for(const c of cells)t+=(c.innerText||c.textContent||'');
-      if(!snap.has(t)){
+      if(!snap.has(rowKey(r))){
         r.classList.add('sfhl-new-match');setTimeout(()=>r.classList.remove('sfhl-new-match'),3000);
         // v4.5.0 SLA-Alarm: neue Treffer-Zeile, deren Regel das alarm-Flag trägt
         const rid=r.dataset.sfhlRule; const rule=rid&&RULES.find(x=>x.id===rid);
@@ -4378,7 +4434,8 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
     const rem = Math.max(0, Math.ceil((nextAt - Date.now()) / 1000));
     if (progEl) progEl.style.strokeDashoffset = String(263.9 * (1 - rem / total));
     if (lblEl) lblEl.textContent = rem + 's';
-    if (statusEl) statusEl.textContent = isCaseListView() ? 'Nächster Refresh in…' : 'Nicht auf Case-Listenseite';
+    const typing = Date.now() - _lastActivity < 5000;
+    if (statusEl) statusEl.textContent = !isCaseListView() ? 'Nicht auf Case-Listenseite' : typing ? 'Pausiert – du tippst gerade' : 'Nächster Refresh in…';
     ringEl.classList.add('vis');
   }
   function startCd(secs){const b=getRefreshButton();if(!b)return;clearCd();nextAt=Date.now()+secs*1000;setLbl(b,secs);updateRfRing();cdId=setInterval(()=>{const rem=Math.max(0,nextAt-Date.now());setLbl(getRefreshButton(),Math.ceil(rem/1000));updateRfRing();if(rem<=0)clearCd();},1000);}
@@ -4388,10 +4445,15 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   function stopRefresh(){clearRf();clearCd();if(rfObs){rfObs.disconnect();rfObs=null;}if(plId){clearInterval(plId);plId=null;}clrLbl();updateRfRing();}
   function restartRefresh(){if(loadRefreshOn()&&isCaseListView())waitBtn(startLoop);else stopRefresh();}
   function waitBtn(cb){if(getRefreshButton()){cb?.();return;}if(rfObs){rfObs.disconnect();rfObs=null;}if(plId){clearInterval(plId);plId=null;}rfObs=new MutationObserver(()=>{if(getRefreshButton()){rfObs.disconnect();rfObs=null;if(plId){clearInterval(plId);plId=null;}cb?.();}});rfObs.observe(document.documentElement,{childList:true,subtree:true});plId=setInterval(()=>{if(getRefreshButton()){if(rfObs){rfObs.disconnect();rfObs=null;}clearInterval(plId);plId=null;cb?.();}},1000);}
-  window.addEventListener('load', () => {
+  // FIX v4.6.4: Wird das Skript erst NACH dem load-Event injiziert (langsamer
+  // Tampermonkey-Start), feuerte der Listener nie → Auto-Refresh blieb bis zur ersten
+  // Navigation tot. readyState-Check als Absicherung.
+  const _initAfterLoad = () => {
     setTimeout(restartRefresh, 800);
     setTimeout(prefetchContactApi, 1500);
-  });
+  };
+  if (document.readyState === 'complete') _initAfterLoad();
+  else window.addEventListener('load', _initAfterLoad);
 
   // FIX #5: URL-Polling entfernt — pushState-Override + popstate decken SPA-Navigation bereits ab
 
@@ -4405,54 +4467,6 @@ if (info) { showDropdown(el, info); } else { closeDropdown(); }
   // FIX (B4): Deep-Scan (querySelectorAll('*') über alle Shadow Roots) ist teuer — als reiner
   // Fallback reicht 30s; neue Editoren/Iframes erkennt primär der MutationObserver oben.
   setInterval(periodicScan, 30000);
-
-  // ===== Backup-Reminder =====
-  // localStorage-Verlust = Datenverlust (siehe README-Troubleshooting). Erinnert dezent,
-  // wenn >30 Tage nicht exportiert wurde — max. 1× pro 7 Tage, nur bei aktiver Nutzung.
-  (function backupReminder() {
-    try {
-      const DAY = 86400000;
-      const lastExp  = parseInt(localStorage.getItem(LS_LAST_EXPORT), 10) || 0;
-      const lastHint = parseInt(localStorage.getItem(LS_BACKUP_HINT), 10) || 0;
-      if (loadRecent().length === 0) return;           // Nutzungs-Proxy: noch nie Snippet eingefügt → kein Hinweis
-      if (Date.now() - lastExp  < 30 * DAY) return;
-      if (Date.now() - lastHint <  7 * DAY) return;
-      localStorage.setItem(LS_BACKUP_HINT, String(Date.now()));
-      setTimeout(() => toast('Backup-Tipp: Regeln & Snippets seit über 30 Tagen nicht exportiert', 'info', 8000,
-        { label: 'Jetzt exportieren', fn: () => doExport('all') }), 4000);
-    } catch {}
-  })();
-
-  // ===== „Was ist neu" nach Update (Feature 3, v4.4.0) =====
-  function showWhatsNew(version, bullets) {
-    const ovl = document.createElement('div');
-    ovl.className = 'sfhl-ovl';
-    const items = bullets.map(b => `<li style="margin-bottom:8px">${escH(b)}</li>`).join('');
-    ovl.innerHTML =
-      `<div class="sfhl-dlg" role="dialog" aria-modal="true">
-        <div class="sfhl-dlg-h">🎉 ${t('Was ist neu')} — v${escH(version)}</div>
-        <div class="sfhl-dlg-b"><ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.5">${items}</ul></div>
-        <div class="sfhl-dlg-f"><button class="sfhl-dlg-btn sfhl-dlg-btn--p" data-sfhl-ok>${t('Verstanden')}</button></div>
-      </div>`;
-    document.documentElement.appendChild(ovl);
-    const close = () => { try { document.removeEventListener('keydown', onKey, true); } catch {} ovl.remove(); };
-    ovl.querySelector('[data-sfhl-ok]').onclick = close;
-    ovl.addEventListener('mousedown', e => { if (e.target === ovl) close(); });
-    const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
-    document.addEventListener('keydown', onKey, true);
-  }
-  (function whatsNewCheck() {
-    try {
-      const seen = localStorage.getItem(LS_LAST_VER);
-      if (seen === VERSION) return;
-      localStorage.setItem(LS_LAST_VER, VERSION);
-      if (!seen) return; // Erstinstallation → kein Changelog
-      const entry = CHANGELOG[VERSION];
-      if (!entry) return;
-      const bullets = (entry[loadDefaultLang()] || entry.de) || [];
-      if (bullets.length) setTimeout(() => showWhatsNew(VERSION, bullets), 1800);
-    } catch {}
-  })();
 
   console.log('[SFHL] Init complete');
 })();

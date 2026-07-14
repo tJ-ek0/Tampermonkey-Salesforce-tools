@@ -1,7 +1,6 @@
 # Salesforce Tools – Tampermonkey Userscript
 
-> **Internes Werkzeug** für autorisierte Mitarbeiter von Endress+Hauser (Deutschland) GmbH+Co. KG.
-> Entwickelt von Tobias Jurgan · Technischer Support · Version 4.0.0
+> Entwickelt von Tobias Jurgan · Version 4.15.0
 
 Erweitert Salesforce Lightning um drei Hauptfunktionen:
 **Zeilen-Markierung** in Case-Listen, **Text-Snippets** mit Platzhalterauflösung und **Auto-Refresh** mit Countdown.
@@ -15,6 +14,7 @@ Erweitert Salesforce Lightning um drei Hauptfunktionen:
 - [Markierung (Regeln)](#markierung-regeln)
 - [Snippets / Textbausteine](#snippets--textbausteine)
 - [Auto-Refresh](#auto-refresh)
+- [Adress-Shortcuts (Google Maps)](#adress-shortcuts-google-maps)
 - [Einstellungen](#einstellungen)
 - [Export / Import](#export--import)
 - [Tastenkürzel](#tastenkürzel)
@@ -52,6 +52,7 @@ Erweitert Salesforce Lightning um drei Hauptfunktionen:
 | **Snippets** | Textbausteine per Kürzel in beliebige SF-Textfelder einfügen |
 | **Platzhalterauflösung** | `{name}`, `{datum}`, `{!Case.CaseNumber}` etc. werden automatisch aus der Seite befüllt |
 | **Auto-Refresh** | Automatischer Refresh der Case-Liste mit Countdown im SF-Button |
+| **Adress-Shortcuts** | Markierte Adresse per Klick in Google Maps suchen oder Route von der eigenen Adresse planen |
 | **Auto-Wrap** | Anrede und Signatur automatisch um jeden Textbaustein legen |
 | **Rich-Text-Editor** | Fett, Kursiv, Links, Listen direkt im Snippet-Editor |
 | **Import/Export** | Regeln und Snippets als JSON-Datei sichern und teilen |
@@ -72,8 +73,11 @@ Regeln werden in der angezeigten Reihenfolge geprüft. **Die erste passende Rege
 | `A \| B` | ODER: mindestens einer | `urgent \| eilig` |
 | `!Begriff` | NICHT: darf nicht vorkommen | `SLA + !closed` |
 | `/regex/i` | Regulärer Ausdruck | `/Fehler\s*\d+/i` |
+| `Spalte=Wert` | Nur in dieser Spalte suchen | `Status=Neu` |
 
 Kombinationen sind möglich: `SLA + dringend | urgent | eilig`
+
+**Spaltengenau:** `Spalte=Wert` prüft nur die Zelle, deren Spaltenüberschrift den angegebenen Namen enthält (z.B. trifft `Status=geschlossen` nicht, wenn „geschlossen" nur im Betreff steht). Kombinierbar mit allen Operatoren: `Status=Neu + dringend`, `!Status=geschlossen`.
 
 ### Ordner
 
@@ -124,9 +128,9 @@ Platzhalter werden beim Einfügen automatisch aus der aktuellen SF-Seite befüll
 
 Wenn in den Einstellungen aktiviert, wird beim Einfügen eines Snippets automatisch die konfigurierte Anrede davor und die Signatur danach eingefügt. Gilt nicht, wenn das Snippet selbst die Anrede oder Signatur ist.
 
-### Snippet teilen
+### Ordner
 
-Im Editor: „Teilen ↗" kopiert einen Import-Link in die Zwischenablage. Kollegen können den Link im Browser öffnen — das Skript importiert das Snippet automatisch nach Bestätigung.
+Snippets lassen sich in Ordner gruppieren (Feld „Ordner" im Editor oder „Ordner"-Button in der Leiste). Ordner sind auf-/zuklappbar, per ▲▼ sortierbar und per Doppelklick auf den Namen umbenennbar. Leere Ordner zeigen ein ✕ zum Löschen.
 
 ---
 
@@ -140,6 +144,17 @@ Im Editor: „Teilen ↗" kopiert einen Import-Link in die Zwischenablage. Kolle
 
 ---
 
+## Adress-Shortcuts (Google Maps)
+
+Eine Adresse in Salesforce markieren (z.B. die Kundenadresse im Case) → neben der Auswahl erscheinen zwei Schaltflächen:
+
+- **🗺️ GMaps** — sucht die markierte Adresse in Google Maps (neuer Tab)
+- **🚗 Route** — plant die Route von der eigenen Adresse (Einstellungen → „Karten / Route" → „Meine Adresse") zur markierten Adresse
+
+Erkannt werden Texte, die wie eine Adresse aussehen (PLZ, Straße mit Hausnummer oder Komma-Schreibweise). Beide Shortcuts hängen am „Lookup aktiv"-Schalter im Doku-Tab. Die Links öffnen sich ausschließlich per Klick — es findet keine automatische Anfrage an Google statt.
+
+---
+
 ## Einstellungen
 
 | Einstellung | Beschreibung |
@@ -149,6 +164,7 @@ Im Editor: „Teilen ↗" kopiert einen Import-Link in die Zwischenablage. Kolle
 | **Default language** | Welche Snippet-Sprache standardmäßig verwendet wird (DE/EN) |
 | **Auto-Wrap** | Anrede und Signatur automatisch ein-/ausschalten |
 | **Anrede / Signatur** | Welche Snippets für Auto-Wrap genutzt werden |
+| **Meine Adresse** | Startadresse für den „Route"-Shortcut (Sektion „Karten / Route"); wird nur lokal gespeichert |
 
 ---
 
@@ -156,14 +172,18 @@ Im Editor: „Teilen ↗" kopiert einen Import-Link in die Zwischenablage. Kolle
 
 ### Export
 
-Im Panel → Tab „Einstellungen":
-- **↓ Alles exportieren** — Regeln + Snippets als eine JSON-Datei
-- **↓ Markierungen** — nur Regeln
-- **↓ Snippets** — nur Snippets
+Im Panel → Tab „Einstellungen" → Sektion „Backup":
+- **↓ Alles exportieren** — Regeln, Snippets, Doku-Links, Ordner-Reihenfolgen und Einstellungen als eine JSON-Datei
+- **↓ Markierungen** — nur Regeln + Ordner
+- **↓ Snippets** — nur Snippets + Ordner-Reihenfolge
+- **↓ Doku-Links** — nur die Doku-Link-Vorlagen
 
 ### Import
 
-- **↑ Datei importieren** — JSON-Datei auswählen (ersetzt bestehende Daten)
+- **↑ Datei importieren** — JSON-Datei auswählen. Ein Dialog zeigt vorab, was die Datei enthält, und bietet zwei Modi:
+  - **Ersetzen** — überschreibt die vorhandenen Daten der enthaltenen Bereiche
+  - **Hinzufügen** — ergänzt nur Neues (Duplikate werden über Stichwort/Trigger/URL erkannt und übersprungen); eigene Einstellungen bleiben unverändert. Ideal, um Regeln oder Snippets von Kollegen zu übernehmen.
+- Beide Modi sind per Toast-Button rückgängig machbar. Erkennt alle Export-Formate, auch reine Doku-Link-Dateien.
 
 ### Format (v4.0.0)
 
@@ -204,14 +224,15 @@ Das Skript verarbeitet Daten ausschließlich lokal im Browser des angemeldeten B
 - Ruft für die Platzhalter-Auflösung (Anrede, Nachname, Telefon) Kontaktfelder über die Salesforce-eigene UI API ab — ausschließlich same-origin innerhalb der bestehenden Benutzersitzung und nur für Datensätze, die der Benutzer ohnehin geöffnet hat und sehen darf. Diese Daten werden nur flüchtig im Arbeitsspeicher gehalten und nicht gespeichert.
 - Speichert Regeln, Snippets und Einstellungen im lokalen Browserspeicher (`localStorage`) des jeweiligen Geräts
 - Stellt Textbausteine mit aufgelösten Platzhaltern zur Verfügung
+- Öffnet bei den Adress-Shortcuts („GMaps"/„Route") **auf Klick** einen Google-Maps-Link in einem neuen Browser-Tab — die markierte Adresse (und beim Routen die eigene Startadresse) ist dabei Teil der aufgerufenen URL. Das geschieht nie automatisch, sondern nur durch bewussten Klick des Benutzers
 
 **Was das Skript nicht tut:**
-- Überträgt keine Daten an externe Server oder Dritte
+- Überträgt keine Daten automatisch an externe Server oder Dritte (einzige Ausnahme: der bewusste Klick auf einen Adress-Shortcut öffnet Google Maps, s.o.)
 - Speichert keine Kunden- oder Kontaktdaten dauerhaft (weder lokal noch extern)
 - Schreibt oder verändert keine Daten in Salesforce (rein lesender Zugriff)
 - Zeichnet keine Nutzerinteraktionen auf
 
-**Hinweis:** Die Nutzung des Skripts erfolgt im Rahmen der bestehenden CRM-Nutzung und der dafür geltenden betrieblichen Regelungen. Es gelten die Datenschutzrichtlinien der Endress+Hauser (Deutschland) GmbH+Co. KG sowie die Vorgaben der DSGVO.
+**Hinweis:** Die Nutzung des Skripts erfolgt im Rahmen der betrieblichen Regelungen der jeweiligen Organisation sowie der geltenden Datenschutzgesetze (DSGVO).
 
 ---
 
@@ -233,7 +254,7 @@ Das Skript verarbeitet Daten ausschließlich lokal im Browser des angemeldeten B
 ## Entwicklung
 
 **Aktive URLs (`@match`):**
-- `https://endress.lightning.force.com/lightning/*` — Snippets funktionieren damit auch auf direkt geöffneten Case-/WorkOrder-Detailseiten (Deep-Link, F5). Zeilen-Markierung und Auto-Refresh aktivieren sich nur auf Case-Listenansichten.
+- `https://*.lightning.force.com/lightning/*` — Funktioniert auf jeder Salesforce-Org. Snippets laufen auch auf direkt geöffneten Case-/WorkOrder-Detailseiten (Deep-Link, F5). Zeilen-Markierung und Auto-Refresh aktivieren sich nur auf Case-Listenansichten.
 
 **localStorage-Keys:**
 
@@ -249,11 +270,13 @@ Das Skript verarbeitet Daten ausschließlich lokal im Browser des angemeldeten B
 | `sfhl_snip_username` | Benutzername für `{name}` |
 | `sfhl_default_language` | Standard-Snippetsprache (`de`/`en`) |
 | `sfhl_wrap_enabled` | Auto-Wrap ein/aus |
-| `sfhl_recent_v1` | Zuletzt verwendete Snippet-IDs |
-| `sfhl_last_export` | Zeitstempel des letzten Exports (Backup-Reminder) |
-| `sfhl_backup_hint_at` | Zeitstempel des letzten Backup-Hinweises |
-| `sfhl_preview_enabled` | Vorschau vor dem Einfügen ein/aus |
-| `sfhl_last_seen_version` | Zuletzt gesehene Version (für „Was ist neu") |
+| `sfhl_cat_order_v1` | Reihenfolge der Snippet-Ordner |
+| `sfhl_doku_links` | Doku-Link-Vorlagen (Array) |
+| `sfhl_doku_cat_order_v1` | Reihenfolge der Doku-Ordner |
+| `sfhl_doku_enabled` | Doku-Lookup ein/aus |
+| `sfhl_home_address` | Eigene Adresse für den „Route"-Shortcut |
+| `sfhl_rules_enabled` | Zeilen-Markierung ein/aus |
+| `sfhl_snip_enabled` | Snippets ein/aus |
 
 **Auto-Update (Tampermonkey):**
 ```
@@ -265,7 +288,7 @@ Das Skript verarbeitet Daten ausschließlich lokal im Browser des angemeldeten B
 
 ## Lizenz
 
-MIT License — Copyright (c) 2025–2026 Tobias Jurgan, Endress+Hauser (Deutschland) GmbH+Co. KG
+MIT License — Copyright (c) 2025–2026 Tobias Jurgan
 
 Vollständiger Lizenztext inkl. Datenschutz- und Markenrechtshinweisen: [LICENSE.txt](LICENSE.txt)
 
