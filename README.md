@@ -2,8 +2,8 @@
 
 > Entwickelt von Tobias Jurgan · Version 4.15.0
 
-Erweitert Salesforce Lightning um drei Hauptfunktionen:
-**Zeilen-Markierung** in Case-Listen, **Text-Snippets** mit Platzhalterauflösung und **Auto-Refresh** mit Countdown.
+Erweitert Salesforce Lightning um fünf Hauptfunktionen:
+**Zeilen-Markierung** in Case-Listen, **Text-Snippets** mit Platzhalterauflösung, **Auto-Refresh** mit Countdown, **Geräte-Doku-Lookup** per Textauswahl und **Adress-Shortcuts** für Google Maps.
 
 ---
 
