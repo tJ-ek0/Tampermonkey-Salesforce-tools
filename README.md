@@ -27,20 +27,41 @@ Erweitert Salesforce Lightning um drei Hauptfunktionen:
 
 ## Installation
 
-1. **Tampermonkey** im Browser installieren:
-   - [Chrome](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=de)
-   - [Edge](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
+Die Installation dauert ca. 3 Minuten und besteht aus vier Schritten. Es werden keine Admin-Rechte benötigt.
 
-2. **Entwicklermodus aktivieren:**
-   - **Chrome:** `chrome://extensions/` → „Entwicklermodus" → bei Tampermonkey „Details" → „Nutzerscripts zulassen"
-   - **Edge:** `edge://extensions/` → „Entwicklermodus" einschalten
+### Schritt 1: Tampermonkey installieren
 
-3. **Installationslink öffnen:**
-   [sfautorefreshhighlights.user.js](https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.user.js)
+Tampermonkey ist eine Browser-Erweiterung, die Userscripts wie dieses ausführt.
 
-4. Tampermonkey fragt zur Bestätigung → **Installieren** klicken.
+- **Edge:** [Tampermonkey im Edge Add-ons Store](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd) öffnen → **„Abrufen"** klicken → **„Erweiterung hinzufügen"** bestätigen
+- **Chrome:** [Tampermonkey im Chrome Web Store](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=de) öffnen → **„Hinzufügen"** klicken → **„Erweiterung hinzufügen"** bestätigen
 
-**Automatische Updates:** Tampermonkey prüft regelmäßig auf neue Versionen und installiert Updates selbstständig.
+### Schritt 2: Userscripts erlauben (einmalig, wichtig!)
+
+Ohne diesen Schritt installiert Tampermonkey das Skript zwar, führt es aber **nicht aus**.
+
+- **Edge:** In die Adressleiste `edge://extensions/` eingeben → links unten den Schalter **„Entwicklermodus"** einschalten
+- **Chrome:** In die Adressleiste `chrome://extensions/` eingeben → bei Tampermonkey auf **„Details"** klicken → den Schalter **„Nutzerskripts zulassen"** einschalten
+  *(Bei älteren Chrome-Versionen gibt es diesen Schalter nicht — dann stattdessen oben rechts den „Entwicklermodus" einschalten.)*
+
+Danach den Browser einmal komplett schließen und neu öffnen.
+
+### Schritt 3: Skript installieren
+
+1. Diesen Link öffnen: **[sfautorefreshhighlights.user.js](https://raw.githubusercontent.com/tJ-ek0/Tampermonkey-Salesforce-tools/main/sfautorefreshhighlights.user.js)**
+2. Tampermonkey öffnet automatisch eine Installationsseite mit dem Skript-Namen „Salesforce List Markierung + Snippets"
+3. Auf **„Installieren"** klicken
+
+> Öffnet sich nur eine Textseite statt der Installationsseite? Dann war Schritt 2 noch nicht abgeschlossen — Schalter prüfen, Browser neu starten und den Link erneut öffnen.
+
+### Schritt 4: Prüfen, ob es läuft
+
+1. Salesforce öffnen (bzw. die Seite mit **F5** neu laden)
+2. Unten rechts erscheint der schwebende **„SF Tools"**-Button — Klick darauf (oder `Alt+R`) öffnet das Panel
+
+Fertig! 🎉
+
+**Automatische Updates:** Neue Versionen installiert Tampermonkey ab jetzt selbstständig — es ist keine erneute Installation nötig.
 
 ---
 
